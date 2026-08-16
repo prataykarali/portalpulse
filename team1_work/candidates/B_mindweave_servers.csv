@@ -1,0 +1,4 @@
+id,name,region,role
+1,web-prod-01,us-east-1,api
+2,web-prod-02,us-east-1,api
+3,web-prod-03,us-west-2,static
