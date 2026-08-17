@@ -1,0 +1,5 @@
+streamlit>=1.36
+pandas>=2.0
+numpy>=1.26
+plotly>=5.22
+xgboost>=2.0

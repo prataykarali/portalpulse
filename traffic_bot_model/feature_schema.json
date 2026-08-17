@@ -1,0 +1,17 @@
+{
+    "features": [
+        "hour",
+        "day_of_week",
+        "is_weekend",
+        "is_result_window",
+        "concurrent_users",
+        "requests_per_sec",
+        "cpu_usage",
+        "memory_usage",
+        "network_usage",
+        "latency_ms",
+        "error_rate"
+    ],
+    "target": "safe_capacity",
+    "input_order_is_important": true
+}
