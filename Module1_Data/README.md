@@ -1,188 +1,127 @@
-# Team 1 — Module 1 data work
+# Team 1 — Week 1 data freeze
 
-This folder is Team 1’s working directory.  
-**Team 2 should take the package in `../Module1_Data/`**, not this whole tree.
+**Status: COMPLETE.** Do not reclean or reshuffle these files.
 
----
+This folder is the official Week 1 data package. The research log lives in `../team1_work/`.
 
-## Problem
+## Frozen files
 
-Predict the **safe operating capacity** of a web / ERP system under varying traffic and server conditions.
+| File | What it is |
+|---|---|
+| `master_clean.csv` | Master table. 39,584 rows × 14 columns. Same bytes as `dataset_clean.csv`. |
+| `data_dictionary.csv` | Column meanings, types, roles. |
+| `train.csv` | Time-split train set (28,720 rows). |
+| `validation.csv` | Time-split validation set (4,305 rows). |
+| `test.csv` | Time-split test set (6,559 rows). |
+| `split_manifest.json` | Split rule, row counts, SHA-256 hashes. |
+| `dataset_clean.csv` | Original handoff name. Keep; dashboard falls back to it. |
 
-Typical failure: result-day traffic arrives faster than the app/DB tier can serve it. CPU and RAM climb, latency bends up, then errors spike.
-
-We locked two targets after seeing the data (not before):
-
-- **A (primary):** `safe_capacity` — how many concurrent users the system can still handle.
-- **B (derived):** `risk_level` — `SAFE` / `AT_RISK` / `OVERLOADED`.
-
-See `problem_definition.md` and `data_dictionary.md`.
-
----
-
-## What we did, in order
-
-```
-7 candidate datasets
-        ↓
-   inspect each
-        ↓
-   comparison table   →  dataset_comparison.md
-        ↓
-   pick NASA (G) + University Apache (A)
-        ↓
-   deep inspect: can they support PortalPulse as-is?
-        ↓
-   NO — traffic yes, CPU/RAM/capacity label no
-        ↓
-   parse selected traces to minute tables
-        ↓
-   real NASA load shape + documented resource model
-        ↓
-   clean (one master file, no splits)
-        ↓
-   EDA
-        ↓
-   handoff
-```
-
-We did **not** start by cleaning every candidate.  
-We did **not** emit `train.csv` / `val.csv` / `test.csv`.
-
----
-
-## Source: what we downloaded
-
-| ID | File | Source | Why we looked at it |
-|---|---|---|---|
-| A | `candidates/A_apache_access_labeled.csv` | Hugging Face `EgilKarlsen/ApacheAccessLabeled` | Real university ERP-like traffic (`/bkd_baru/`, lecturer workload). Security labels, not capacity. |
-| B | `B_mindweave_access_logs.csv` + `B_mindweave_servers.csv` | Hugging Face `mindweave/web-server-logs` | Only table with latency. `servers.csv` is a 3-row **inventory**, not CPU/RAM. Too sparse. |
-| C | `C_workload_analyzer.csv` | Hugging Face `infinite-dataset-hub/WorkloadAnalyzer` | NLP project tasks. Rejected. |
-| D | `D_elastic_apache_logs.txt` | GitHub `elastic/examples` | Real access log, 4 days, almost flat. |
-| E | `E_loghub_apache_2k.log` | GitHub `logpai/loghub` | Apache **error** log, not access. Rejected. |
-| F | `F_elastic_nginx_logs.txt` | GitHub `elastic/examples` | 66% HTTP 404s (missing files), 0 × 5xx. Rejected. |
-| G | `NASA_access_log_Jul95.gz` | Internet Traffic Archive | 1.89M real NASA web requests, 28 days, clear diurnal curve. **Selected.** |
-
-Full column-level inspection: `dataset_comparison.md`.
-
-### Selected
-
-- **Primary:** NASA HTTP July 1995 — best real load process.
-- **Secondary:** University Apache (A) — only ERP-like campus application; used for theme + burstiness (CV), not as the request clock.
-
-Copies of the selected originals and the parsed minute tables live in `selected/`.
-
----
-
-## Can the selected pair support PortalPulse as-is?
-
-**No.** Neither file has CPU, RAM, network, or a capacity label.
-
-Public traces we could actually download split into two families:
-
-1. HTTP access logs (traffic, sometimes status/bytes, rarely latency).
-2. Datacenter VM traces (CPU/RAM, no HTTP users).
-
-Nothing in the seven-candidate set joins those families.
-
-So the master table is:
-
-**real NASA request intensity (rank-preserving, scaled to ERP user counts)**  
-→ documented M/M/c + resource model  
-→ CPU, RAM, network, latency, errors  
-→ `safe_capacity` from SLA, `risk_level` from utilization.
-
-This is **not** a production ERP dump and we do not claim it is. It is the only honest way to give Team 2 a table that actually contains the relationship Module 1 needs to learn.
-
-Reproduce:
+Reproduce the freeze (does **not** reclean the data):
 
 ```bash
-.venv/bin/python team1_work/scripts/parse_selected.py
-.venv/bin/python team1_work/scripts/build_dataset.py
-.venv/bin/python team1_work/scripts/build_eda.py
+.venv/bin/python team1_work/scripts/freeze_week1_data.py
 ```
 
 ---
 
-## Cleaning: what we changed
+## What each feature means
 
-Applied only after selection and target definition. Full list: `processed/cleaning_log.md`.
+Grain: **one row = one minute**.
 
-- Dropped an irrelevant internal id column.
-- Removed 18 duplicate rows.
-- Removed 10 impossible sensor rows (`cpu_usage = 999`, negative latency).
-- Removed 99 rows with missing CPU/RAM (injected monitoring dropouts).
-- Clipped percents to [0, 100] and rates to valid ranges.
-- Fixed dtypes and sorted by timestamp.
+| Column | Role | Meaning |
+|---|---|---|
+| `timestamp` | index | Start of the minute. 2025-06-16 00:00 → 2025-07-13 13:32. Not a model input. |
+| `hour` | feature | Hour of day, 0–23. |
+| `day_of_week` | feature | Monday=0 … Sunday=6. |
+| `is_weekend` | feature | 1 if Saturday or Sunday. |
+| `is_result_window` | feature | 1 on a known result / announcement day. Calendar feature, not leakage. |
+| `concurrent_users` | feature | Active users in the minute (56–12,500). |
+| `requests_per_sec` | feature | HTTP arrival rate. |
+| `cpu_usage` | feature | CPU utilization, 0–100%. |
+| `memory_usage` | feature | RAM utilization, 0–100%. |
+| `network_usage` | feature | Network utilization, 0–100%. |
+| `latency_ms` | feature | Mean response time (ms). SLA line = 800 ms. |
+| `error_rate` | feature | Fraction of failed requests. SLA line = 0.01. |
+| `safe_capacity` | **target** | See below. |
+| `risk_level` | derived | `SAFE` / `AT_RISK` / `OVERLOADED`. |
 
-Final clean table: **39,584 rows × 14 columns**, 0 missing, 0 duplicates.
+Full notes: `data_dictionary.csv`, `data_dictionary.md`, `feature_notes.md`.
+
+---
+
+## What `safe_capacity` means
+
+`safe_capacity` is the **maximum concurrent users** the system can still serve without breaching SLA, given that minute’s hidden headroom.
+
+SLA used to **label** the target (not as extra features):
+
+- latency < 800 ms
+- error rate < 1%
+- CPU < 85%
+
+This is **not** the same thing as current load.
+
+```
+current users          ← traffic snapshot (input)
+        ↓
+estimated safe capacity ← model output
+        ↓
+utilization = current users ÷ estimated safe capacity
+        ↓
+SAFE / AT RISK / OVERLOADED
+```
+
+Do **not** feed `utilization = concurrent_users / safe_capacity` back in as a feature. That is leakage.
+
+---
+
+## How cleaning was performed
+
+Applied only after source selection and target definition. Log: `../team1_work/processed/cleaning_log.md`.
+
+| Step | Rows |
+|---|---|
+| Raw table | 39,711 |
+| Duplicate rows removed | 18 |
+| Impossible sensor rows (`cpu_usage = 999`, negative latency) | 10 |
+| Monitoring dropouts (missing CPU/RAM) | 99 |
+| **Clean master** | **39,584** |
+
+Also: dropped an internal id column, clipped percents to [0, 100], clipped rates to valid ranges, fixed dtypes, sorted by timestamp.
 
 We did **not** drop high-latency result-day minutes. Those are the knee, not noise.
 
----
-
-## Features: what the model receives
-
-```
-hour, day_of_week, is_weekend, is_result_window,
-concurrent_users, requests_per_sec,
-cpu_usage, memory_usage, network_usage,
-latency_ms, error_rate
-```
-
-Details: `feature_notes.md`.
+Missing values in the clean table: 0. Duplicates: 0.
 
 ---
 
-## Target: what the model predicts
+## Date / time range
 
-| Column | Task | Meaning |
-|---|---|---|
-| `safe_capacity` | regression | max safe concurrent users under SLA (800 ms / 1% errors / 85% CPU) |
-| `risk_level` | classification | `SAFE` (<70% util) / `AT_RISK` (70–90%) / `OVERLOADED` (≥90% or already breaching) |
+- Start: **2025-06-16 00:00**
+- End: **2025-07-13 13:32**
+- Calendar days: **28**
+- Grain: one minute
 
-Class mix: SAFE 33,294 · AT_RISK 3,156 · OVERLOADED 3,134.
-
----
-
-## Known limitations
-
-1. Server telemetry and the target are **modelled**, not scraped from a college ERP. Demand *shape* is real (NASA). Response *surface* is a queueing/resource model.
-2. NASA is a 1995 public website, not a 2025 result portal. We scale magnitude and remap timestamps onto a 2025 academic window; we do not invent extra request spikes beyond NASA’s own heaviest days.
-3. University log A is thematically right (BKD / lecturer ERP) but too sparse and security-labeled to be the demand clock.
-4. `servers.csv` in candidate B does **not** contain server metrics. Joining it would not have created CPU/RAM.
-5. Classes are imbalanced. Accuracy is the wrong headline metric for Option B.
-6. `concurrent_users` and `requests_per_sec` are collinear. Linear models need regularization or a choice of one.
-7. No production IDs, campuses, or student PII.
+Demand *shape* is real NASA HTTP traffic (July 1995), scaled to ERP-like user counts and remapped onto this 2025 academic window. CPU / RAM / latency / errors / `safe_capacity` come from a documented resource model — **not** a live IEM dump.
 
 ---
 
-## Folder
+## Train / validation / test split
 
-```
-team1_work/
-├── candidates/              # all 7 downloads, untouched
-├── selected/                # NASA + University originals + minute tables
-├── processed/
-│   ├── dataset_raw.csv      # before cleaning (Team 1 only)
-│   ├── dataset_clean.csv    # master table
-│   └── cleaning_log.md
-├── EDA/
-│   └── EDA.ipynb
-├── scripts/
-├── dataset_comparison.md
-├── problem_definition.md
-├── data_dictionary.md
-├── feature_notes.md
-└── README.md                # this file
-```
+Time split, as recommended in `feature_notes.md`:
 
-Team 2 package (`../Module1_Data/`):
+| Split | Rule | Rows | Window |
+|---|---|---|---|
+| Train | `timestamp < 2025-07-06` | 28,720 | 16 Jun → 5 Jul |
+| Validation | 3 days before test | 4,305 | 6 Jul → 8 Jul |
+| Test | last 5 calendar days | 6,559 | 9 Jul → 13 Jul 13:32 |
 
-```
-dataset_clean.csv
-data_dictionary.md
-EDA.ipynb
-feature_notes.md
-README.md
-```
+Hashes are in `split_manifest.json`.
+
+The original XGBoost training-row split was not checked in with the booster. This published time split is the **Week 1 freeze** so nobody retrains on a random shuffle.
+
+---
+
+## Honesty
+
+This is **not** a production IEM portal dump. It is the Week 1 baseline table Team 2 trained on, and the table the dashboard reads.

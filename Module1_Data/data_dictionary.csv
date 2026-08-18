@@ -1,0 +1,15 @@
+column,meaning,type,role,allowed_values,notes
+timestamp,Start of the 1-minute window (naive local clock on the 2025 academic observation window),datetime,index / time feature,2025-06-16 00:00 → 2025-07-13 13:32,Leave out of the model matrix. Use only to split and to derive hour / day flags.
+hour,Hour of day extracted from timestamp,integer,feature,0–23,Captures the real NASA diurnal shape.
+day_of_week,Monday=0 … Sunday=6,integer,feature,0–6,
+is_weekend,1 if Saturday or Sunday,integer (flag),feature,0 or 1,Derived from day_of_week.
+is_result_window,1 if this minute falls on a known heavy result / announcement day,integer (flag),feature,0 or 1,Legitimate calendar feature — result dates are known in advance. Not leakage.
+concurrent_users,Active users in the minute,integer,feature,"56–12,500",Scaled from NASA unique hosts; rank order of the real load is preserved.
+requests_per_sec,HTTP arrival rate,float,feature,"≈ 5.6–1,769",Mixture of host-implied and request-implied NASA intensity.
+cpu_usage,CPU utilization,float (%),feature,0–100,Strongest saturation signal.
+memory_usage,RAM utilization,float (%),feature,0–100,Softer constraint than CPU.
+network_usage,Network utilization,float (%),feature,0–100,Rises with RPS and heavier result-day payloads.
+latency_ms,Mean response time in the minute,float (ms),feature,≥ 15,SLA line used to label the target is 800 ms.
+error_rate,Fraction of failed requests in the minute,float,feature,0–1,SLA line used to label the target is 0.01 (1%).
+safe_capacity,"Maximum concurrent users the system can still serve without breaching SLA, given current hidden headroom",integer,primary target,"3,626–9,248",Regression target. Not a live IEM measurement. Do not use as a feature.
+risk_level,Operating-risk class derived from utilization and live SLA breach,string,derived target,SAFE / AT_RISK / OVERLOADED,"SAFE <70% util, AT_RISK 70–90%, OVERLOADED ≥90% or already breaching SLA."

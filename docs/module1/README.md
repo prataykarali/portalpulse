@@ -1,41 +1,32 @@
-# Module 1 — ANN / MLP & Full Pipeline
+# Module 1
 
-This folder contains the **planned** ANN / MLP work for Module 1 (not yet executed in the repo).
+## Week 1 — frozen baseline
 
-## What was planned (Module 1 TODO)
+Team 1 cleaned the telemetry. Team 2 trained an XGBoost regressor that estimates **safe concurrent-user capacity**. The dashboard is a **Traffic Simulation / AI Prototype**.
 
-Team 2 was supposed to:
+Do not unfreeze Week 1 to add more models. The missing 5–10% was documentation, reproducibility, and a clear baseline — that is now in:
 
-1. Linear Regression baseline
-2. Random Forest
-3. XGBoost (already done)
-4. LightGBM
-5. **ANN / MLP** (Neural Network)
-6. Model comparison + tuning
-7. Final test + stress test
+- `Module1_Data/` (data freeze)
+- `traffic_bot_model/` and `team2_work/` (model freeze)
+- `dashboard/app.py` (four-section prototype)
 
-The official metrics folder now contains:
+## Week 2
 
-- `xgboost_metadata.json` (done)
-- `xgboost_safe_capacity.json` (done)
+Week 2 should **not** be “train the model again.”
 
-## Future work (Module 1 ANN/MLP)
+1. Stress testing and unseen result-day-like conditions
+2. Threshold calibration
+3. Robustness / generalization
+4. Turn the prediction into a traffic-decision mechanism
 
-After the XGBoost model is saved, add a folder like:
+Optional later comparison work (Linear Regression, Random Forest, LightGBM, ANN / MLP) belongs here only as a comparison against the frozen XGBoost baseline — not as a replacement for it.
 
 ```
-module1/ANN_MLP/
+docs/module1/ANN_MLP/   # planned, not required to close Week 1
 ├── train_mlp.py
-├── mlp_model.pkl          # or .h5
+├── mlp_model.pkl
 ├── scaler.pkl
 ├── comparison.csv
 ├── mlp_tuning.ipynb
 └── README.md
 ```
-
-## Current status
-
-- XGBoost is complete and used in the Week 1 dashboard.
-- ANN / MLP are **planned** but not shipped yet.
-
-Add them when you finish the full pipeline and the folder will be pushed automatically.

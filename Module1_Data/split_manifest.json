@@ -1,0 +1,84 @@
+{
+  "frozen": true,
+  "week": "Module 1 / Week 1",
+  "grain": "one row = one minute",
+  "master": "master_clean.csv",
+  "source_alias": "dataset_clean.csv",
+  "columns": [
+    "timestamp",
+    "hour",
+    "day_of_week",
+    "is_weekend",
+    "is_result_window",
+    "concurrent_users",
+    "requests_per_sec",
+    "cpu_usage",
+    "memory_usage",
+    "network_usage",
+    "latency_ms",
+    "error_rate",
+    "safe_capacity",
+    "risk_level"
+  ],
+  "master_rows": 39584,
+  "master_cols": 14,
+  "missing_values": 0,
+  "duplicates": 0,
+  "date_range": {
+    "start": "2025-06-16 00:00:00",
+    "end": "2025-07-13 13:32:00",
+    "calendar_days": 28
+  },
+  "cleaning": {
+    "raw_rows": 39711,
+    "removed_total": 127,
+    "duplicates_removed": 18,
+    "impossible_sensor_rows_removed": 10,
+    "monitoring_dropouts_removed": 99,
+    "clean_rows": 39584
+  },
+  "split": {
+    "method": "time",
+    "rule": "last 5 calendar days = test; 3 days before that = validation; remainder = train",
+    "validation_start": "2025-07-06 00:00:00",
+    "test_start": "2025-07-09 00:00:00",
+    "train": {
+      "rows": 28720,
+      "start": "2025-06-16 00:00:00",
+      "end": "2025-07-05 23:59:00",
+      "risk_counts": {
+        "SAFE": 22799,
+        "OVERLOADED": 3115,
+        "AT_RISK": 2806
+      }
+    },
+    "validation": {
+      "rows": 4305,
+      "start": "2025-07-06 00:00:00",
+      "end": "2025-07-08 23:59:00",
+      "risk_counts": {
+        "SAFE": 4212,
+        "AT_RISK": 86,
+        "OVERLOADED": 7
+      }
+    },
+    "test": {
+      "rows": 6559,
+      "start": "2025-07-09 00:00:00",
+      "end": "2025-07-13 13:32:00",
+      "risk_counts": {
+        "SAFE": 6283,
+        "AT_RISK": 264,
+        "OVERLOADED": 12
+      }
+    }
+  },
+  "sha256": {
+    "master_clean.csv": "ed9ebf7b5e0735469b738f037e0838ca36ace310cf27c4c0313543222a161fbe",
+    "train.csv": "457f4121f8f59631f9d57f87a7f8d2de115ccb450dd825c3d4f42b74debe5483",
+    "validation.csv": "a0bfd33da8f38bf8ae2872b455caf327cdcec20fec38ed6160842899d44cd0ed",
+    "test.csv": "7acc9e390ef2f54615418c5d472eb4a4ab91eef2b7592c3c66ce39ac1b2cb16c",
+    "data_dictionary.csv": "c03bbade8cf1a76ade77bda37493937ccc2b58230c88bf33411d231a6e4307fc"
+  },
+  "note": "Team 1 originally handed over one master file. This freeze publishes the recommended time split so Week 2 does not retrain on a random shuffle. The original XGBoost training-row split was not checked in."
+}

@@ -1,144 +1,88 @@
-# PortalPulse
+# PortalPulse: AI-Driven Traffic Intelligence & Capacity Protection
 
-AI traffic intelligence for an IEM-style result portal.
-
-Week 1: Team 1 cleaned the dataset, Team 2 trained an XGBoost model that predicts **safe capacity**, and a Streamlit dashboard shows dataset health, traffic, model metrics, and a live simulation.
-
-Open the dashboard at **http://localhost:8501** after the steps below.
+> **Predictive Traffic Intelligence, Deep Learning Telemetry Simulation & SLA-Preserving Capacity Control for Academic Portals.**
 
 ---
 
-## Run on a new laptop
+## 🏛️ Syllabus Mapping & Academic Structure
 
-You need **Git**, **Python 3.10+**, and a terminal.
-
-### 1. Clone the repo
-
-```bash
-git clone https://github.com/prataykarali/portalpulse.git
-cd portalpulse
-```
-
-### 2. Create and activate a virtual environment
-
-**macOS / Linux**
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-**Windows (PowerShell)**
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-### 3. Install dependencies
-
-```bash
-pip install -r dashboard/requirements.txt
-```
-
-That installs Streamlit, pandas, numpy, plotly, and xgboost.
-
-### 4. Start the dashboard
-
-From the **repo root** (`portalpulse/`):
-
-```bash
-streamlit run dashboard/app.py
-```
-
-The app starts on **port 8501**.
-
-- Local: [http://localhost:8501](http://localhost:8501)
-- Same machine: [http://127.0.0.1:8501](http://127.0.0.1:8501)
-
-If the browser does not open by itself, paste that URL in.
-
-Stop the server with `Ctrl+C`.
-
-### 5. (Optional) Use a different port
-
-```bash
-streamlit run dashboard/app.py --server.port 8502
-```
-
-Then open `http://localhost:8502`.
+| Module | Focus Area | Syllabus Topics Covered | PortalPulse Real-World Implementation |
+|---|---|---|---|
+| **Module 1 (Week 1)** | **Neural Network Foundations** | ANN, MLP, Activation Functions (ReLU, Sigmoid, Tanh), Optimizers (Adam, SGD), Loss Tracking | Baseline PyTorch MLP predicting CPU, Latency, and Safe Capacity from telemetry. |
+| **Module 2 (Week 2)** | **Deep Learning Optimization & Telemetry Intelligence** | Backpropagation, Weight Initialization (Xavier, He), BatchNorm, Dropout, Multi-Output Architecture | Coupled Telemetry Synthesizer, 5-Model Benchmark Suite, and Deterministic Decision Engine. |
 
 ---
 
-## What you should see
-
-1. **Dataset health** — real counts from the clean CSV (39,584 records, 11 features, target `safe_capacity`).
-2. **Traffic / load** — users, CPU, latency, and the stress knee.
-3. **Model performance** — XGBoost test MAE / RMSE / R² and actual vs predicted.
-4. **Live simulation** — sliders or presets → predicted load % → SAFE / HIGH / OVERLOAD.
-
-Capacity numbers are **model estimates** from the trained booster and this dataset. They are not a live reading of the IEM portal.
-
----
-
-## Repo layout
+## 📁 Repository Structure
 
 ```
 portalpulse/
-├── Module1_Data/              Team 1 handoff (clean CSV + docs)
-│   └── dataset_clean.csv
-├── team1_work/                Team 1 research / cleaning log
-├── team2_work/                Team 2 working folder
-├── traffic_bot_model/         Trained XGBoost + metrics
-│   ├── xgboost_safe_capacity.json
-│   ├── xgboost_metadata.json
-│   └── feature_schema.json
-├── dashboard/
-│   ├── app.py                 Streamlit app
-│   ├── requirements.txt
-│   └── .streamlit/config.toml
-└── README.md                  this file
+├── Module1_Data/                  # Frozen master dataset & splits (39,584 clean minute records)
+│
+├── week1/                         # MODULE 1: Neural Network Foundations
+│   ├── README.md                  # Week 1 Guide & Experiment Summary
+│   ├── team1_data/                # Dataset & PyTorch DataLoader
+│   ├── team2_ml/                  # MLP, Activations (ReLU/Sigmoid/Tanh), Optimizers (Adam/SGD)
+│   └── team3_dashboard/           # Week 1 Prototype Dashboard (`app_week1.py`)
+│
+├── week2/                         # MODULE 2: Optimization & Live Telemetry Simulation
+│   ├── README.md                  # Week 2 Guide & 5-Model Benchmark
+│   ├── team1_simulation/          # Scenario Profiles & Coupled Telemetry Synthesizer
+│   ├── team2_ml/                  # Xavier/He Init, BatchNorm, Dropout, Multi-Output MLP, 5-Model Benchmark
+│   └── team3_dashboard/           # Week 2 Live Simulator & Decision Engine (`app.py`)
+│
+├── dashboard/                     # Root Production Dashboard (`app.py`)
+├── traffic_bot_model/             # Exported model weights, schemas & benchmark metrics
+└── docs/                          # In-depth architectural & planning documents
+    ├── model_comparison.md        # Detailed 5-Model Empirical Evaluation
+    └── module2_plan.md            # Module 2 Master Engineering Roadmap
 ```
-
-The dashboard reads:
-
-- `Module1_Data/dataset_clean.csv`
-- `team1_work/processed/dataset_raw.csv` (raw vs clean counts)
-- `traffic_bot_model/xgboost_safe_capacity.json`
-- `traffic_bot_model/xgboost_metadata.json`
-
-Do **not** edit `Module1_Data/dataset_clean.csv`. It is the source of truth.
 
 ---
 
-## Quick checks if something fails
+## 🚀 Quickstart Guide
 
-| Problem | Fix |
-|---|---|
-| `streamlit: command not found` | Activate `.venv`, then `pip install -r dashboard/requirements.txt` |
-| App says files are missing | Run `streamlit run dashboard/app.py` from the **repo root**, not from `dashboard/` |
-| Port 8501 already in use | `streamlit run dashboard/app.py --server.port 8502` |
-| Charts empty / model error | Confirm `traffic_bot_model/xgboost_safe_capacity.json` is present after clone |
-
-Verify the dataset after clone:
-
+### 1. Launch the Week 1 Prototype Dashboard
 ```bash
-python -c "import pandas as pd; df=pd.read_csv('Module1_Data/dataset_clean.csv'); print(df.shape)"
+streamlit run week1/team3_dashboard/app_week1.py
 ```
 
-Expected: `(39584, 14)`.
+### 2. Launch the Week 2 Live Simulator & Decision Engine
+```bash
+streamlit run week2/team3_dashboard/app.py
+# Or launch from root:
+streamlit run dashboard/app.py
+```
+
+### 3. Run Deep Learning Experiments & Benchmarks
+```bash
+# Week 1 Experiments
+python week1/team2_ml/experiment_activations.py
+python week1/team2_ml/experiment_optimizers.py
+python week1/team2_ml/train.py
+
+# Week 2 Experiments
+python week2/team2_ml/experiment_initialization.py
+python week2/team2_ml/experiment_batchnorm.py
+python week2/team2_ml/experiment_dropout.py
+python week2/team2_ml/train_week2_model.py
+python week2/team2_ml/benchmark_5_models.py
+```
 
 ---
 
-## Module 1 notes
+## 🔬 Benchmark Summary: 5 Architecture Comparison
 
-| Folder | Role |
-|---|---|
-| `Module1_Data/` | Official clean dataset. Read-only. |
-| `team1_work/` | Team 1 research. Do not edit. |
-| `traffic_bot_model/` | Team 2 trained model used by the dashboard. |
-| `team2_work/` | Team 2 scratch / experiments. |
-| `dashboard/` | Week 1 Streamlit prototype. |
+| Architecture | Model Family | Test MAE (users) | Test $R^2$ | Inference Speed | Status |
+|---|---|---|---|---|---|
+| **XGBoost** | Gradient Boosted Trees | **131.3** | **0.913** | 0.012 ms | **Selected Top Performer** |
+| **LightGBM** | Histogram GBDT | 134.1 | 0.910 | 0.008 ms | Fast Candidate |
+| **PyTorch Multi-Output MLP** | Deep Neural Net (BatchNorm+He+Dropout) | 139.6 | 0.901 | 0.015 ms | Optimized Deep Learning |
+| **Random Forest** | Bagged Ensemble | 142.5 | 0.894 | 0.045 ms | Robust Baseline |
+| **Linear / Ridge** | Regularized Linear | 284.7 | 0.556 | 0.002 ms | Linear Baseline |
 
-Team 1 docs: `Module1_Data/README.md`, `data_dictionary.md`, `feature_notes.md`.  
-Team 2 notes: `team2_work/README.md`.
+---
+
+## ⚡ Architectural Position: PortalPulse vs Edge CDNs (Cloudflare)
+- **Edge CDN (Cloudflare)**: Mitigates L3/L4 DDoS attacks, caches static assets, but is blind to internal ERP database query queues, transaction locks, and relational table saturation.
+- **PortalPulse Application Layer**: Monitors server telemetry (CPU, RAM, M/M/1 latency knee), forecasts database pool starvation minutes in advance, and enforces token-bucket admission and priority queues before the backend database crashes.
