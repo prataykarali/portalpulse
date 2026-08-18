@@ -1,6 +1,8 @@
 # Team 1 — Module 1 data work
 
-This folder is Team 1’s working directory.  
+**Week 1 deliverable: COMPLETE.** Official freeze is `../Module1_Data/` (`master_clean.csv`, `data_dictionary.csv`, `train.csv`, `validation.csv`, `test.csv`). Do not reclean the master table.
+
+This folder is Team 1’s working directory / research log.  
 **Team 2 should take the package in `../Module1_Data/`**, not this whole tree.
 
 ---

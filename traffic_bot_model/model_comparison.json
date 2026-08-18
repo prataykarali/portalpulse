@@ -1,0 +1,57 @@
+[
+  {
+    "model_name": "XGBoost",
+    "model_family": "Gradient Boosted Trees",
+    "train_mae": 82.4,
+    "val_mae": 131.8,
+    "test_mae": 131.3,
+    "test_rmse": 167.3,
+    "test_r2": 0.913,
+    "inference_ms": 0.012,
+    "status": "Selected Baseline"
+  },
+  {
+    "model_name": "LightGBM / HistGB",
+    "model_family": "Histogram GBDT",
+    "train_mae": 85.1,
+    "val_mae": 133.5,
+    "test_mae": 134.1,
+    "test_rmse": 170.8,
+    "test_r2": 0.910,
+    "inference_ms": 0.008,
+    "status": "Candidate"
+  },
+  {
+    "model_name": "Random Forest",
+    "model_family": "Bagged Ensemble",
+    "train_mae": 68.2,
+    "val_mae": 140.9,
+    "test_mae": 142.5,
+    "test_rmse": 185.2,
+    "test_r2": 0.894,
+    "inference_ms": 0.045,
+    "status": "Candidate"
+  },
+  {
+    "model_name": "MLP / ANN",
+    "model_family": "Deep Neural Network",
+    "train_mae": 142.0,
+    "val_mae": 165.2,
+    "test_mae": 168.4,
+    "test_rmse": 215.6,
+    "test_r2": 0.856,
+    "inference_ms": 0.020,
+    "status": "Candidate"
+  },
+  {
+    "model_name": "Linear / Ridge Regression",
+    "model_family": "Linear Baseline",
+    "train_mae": 272.5,
+    "val_mae": 281.3,
+    "test_mae": 284.7,
+    "test_rmse": 378.1,
+    "test_r2": 0.556,
+    "inference_ms": 0.002,
+    "status": "Baseline"
+  }
+]

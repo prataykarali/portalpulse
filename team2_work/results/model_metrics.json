@@ -1,0 +1,131 @@
+{
+  "frozen": true,
+  "week": "Module 1 / Week 1",
+  "do_not_retrain": true,
+  "model_type": "XGBoost regressor",
+  "task": "Regression",
+  "target": "safe_capacity",
+  "input_features": [
+    "hour",
+    "day_of_week",
+    "is_weekend",
+    "is_result_window",
+    "concurrent_users",
+    "requests_per_sec",
+    "cpu_usage",
+    "memory_usage",
+    "network_usage",
+    "latency_ms",
+    "error_rate"
+  ],
+  "artifacts": {
+    "xgboost_model.pkl": "sklearn-compatible XGBRegressor wrapper of the frozen booster",
+    "xgboost_safe_capacity.json": "native XGBoost booster used by the dashboard",
+    "feature_list.json": "locked input order",
+    "prediction_test.csv": "frozen model scored on the published time-split test set"
+  },
+  "hyperparameters": {
+    "colsample_bytree": 0.8,
+    "learning_rate": 0.1,
+    "max_depth": 6,
+    "n_estimators": 400,
+    "subsample": 0.8
+  },
+  "official_training_metrics": {
+    "validation": {
+      "MAE": 147.7970428466797,
+      "RMSE": 190.4461148363232,
+      "R2": 0.9667381048202515
+    },
+    "test": {
+      "MAE": 146.48651123046875,
+      "RMSE": 188.31455358986463,
+      "R2": 0.9689733982086182
+    },
+    "note": "Recorded when this booster was trained. The original training-row split was not checked in with the model."
+  },
+  "frozen_time_split_evaluation": {
+    "split": "Module1_Data time split (train < 2025-07-06, val 2025-07-06\u201307-08, test \u2265 2025-07-09)",
+    "validation": {
+      "MAE": 131.84212421058362,
+      "RMSE": 169.8935816105695,
+      "R2": 0.9111150629942728
+    },
+    "test": {
+      "MAE": 131.30117588011225,
+      "RMSE": 167.2689271088181,
+      "R2": 0.9130261298538754
+    },
+    "test_rows": 6559,
+    "note": "Same frozen booster. Not a new training run."
+  },
+  "feature_importance": [
+    {
+      "feature": "is_result_window",
+      "gain": 384424320.0,
+      "share_pct": 95.13679242172975
+    },
+    {
+      "feature": "hour",
+      "gain": 9047318.0,
+      "share_pct": 2.2390175900925806
+    },
+    {
+      "feature": "latency_ms",
+      "gain": 3592796.75,
+      "share_pct": 0.8891403088603116
+    },
+    {
+      "feature": "cpu_usage",
+      "gain": 2187637.25,
+      "share_pct": 0.5413934033811745
+    },
+    {
+      "feature": "requests_per_sec",
+      "gain": 1815780.875,
+      "share_pct": 0.44936690838972365
+    },
+    {
+      "feature": "concurrent_users",
+      "gain": 1313163.5,
+      "share_pct": 0.3249798642169468
+    },
+    {
+      "feature": "memory_usage",
+      "gain": 1105818.75,
+      "share_pct": 0.27366647582235865
+    },
+    {
+      "feature": "day_of_week",
+      "gain": 225193.65625,
+      "share_pct": 0.05573061072032751
+    },
+    {
+      "feature": "network_usage",
+      "gain": 151964.328125,
+      "share_pct": 0.03760791913564613
+    },
+    {
+      "feature": "error_rate",
+      "gain": 134609.90625,
+      "share_pct": 0.03331307111062784
+    },
+    {
+      "feature": "is_weekend",
+      "gain": 76739.671875,
+      "share_pct": 0.01899142654055687
+    }
+  ],
+  "status_rule": {
+    "utilization": "current_users / predicted_safe_capacity",
+    "SAFE": "utilization < 0.70 and no SLA breach",
+    "AT_RISK": "0.70 \u2264 utilization < 0.90 and no SLA breach",
+    "OVERLOADED": "utilization \u2265 0.90 or CPU\u226585% or latency\u2265800ms or error_rate\u22651%"
+  },
+  "caveats": [
+    "Prototype estimate based on the trained model.",
+    "R\u00b2 on this historical dataset does not prove the model will work on a real IEM result day.",
+    "This is not connected to the live IEM portal.",
+    "Do not keep retraining randomly. This is the Week 1 baseline."
+  ]
+}
