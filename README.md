@@ -97,3 +97,23 @@ streamlit run week2/team3_dashboard/app.py
 ## ⚡ Architectural Position: PortalPulse vs Edge CDNs (Cloudflare)
 - **Edge CDN (Cloudflare)**: Mitigates L3/L4 DDoS attacks, caches static assets, but is blind to internal ERP database query queues, transaction locks, and relational table saturation.
 - **PortalPulse Application Layer**: Monitors server telemetry (CPU, RAM, M/M/1 latency knee), forecasts database pool starvation minutes in advance, and enforces token-bucket admission and priority queues before the backend database crashes.
+
+---
+
+## 🛠️ Developer CLI Tools, Benchmarks & Test Suite
+
+PortalPulse includes standalone CLI automation scripts and test suites:
+
+```bash
+# 1. Run full test suite (Database, Quantum Keys, Multi-Tier Queuing)
+make test
+
+# 2. Run Redis vs Cold DB Latency Benchmark
+make bench
+
+# 3. Seed Database with 200 Realistic Academic Records
+make seed
+
+# 4. Launch Production Docker Stack
+make docker-up
+```
