@@ -1,12 +1,21 @@
-"""PortalPulse Production Dashboard — High-Fidelity UI with 3-Role Quantum Access Keys,
-Live Multi-Parameter Telemetry, Real SQLite Database & Hybrid Redis Caching Layer.
+"""PortalPulse Production Dashboard — High-Fidelity Multi-Role Platform.
+
+Features:
+- Initial Modern Login Screen Gate (Student, Faculty, Master Admin)
+- Strict Role Scoping & Exclusive ML Model Visibility for Admin
+- Student Session Redirect & Timeout Risk Meter
+- Faculty AI Traffic & Attendance Trend Forecast for Today
+- Master Admin Custom Stress Lab & Manual Parameter Studio (Manual Range Inputs)
+- Real SQLite WAL Database, Hybrid Redis Caching & 256-bit Quantum Keys
 """
 
 from __future__ import annotations
 
 import base64
 import json
+import random
 import time
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -20,6 +29,7 @@ try:
     from dashboard.db import (
         QUANTUM_KEYS,
         add_student,
+        get_all_faculty,
         get_all_students,
         get_db_stats,
         get_query_logs,
@@ -38,6 +48,7 @@ except ImportError:
     from dashboard.db import (
         QUANTUM_KEYS,
         add_student,
+        get_all_faculty,
         get_all_students,
         get_db_stats,
         get_query_logs,
@@ -59,7 +70,6 @@ SHIELD_PATH = ASSETS_DIR / "shield.jpg"
 
 SLA_LATENCY = 800.0
 SLA_CPU = 85.0
-SLA_ERROR = 0.01
 
 SCENARIOS = {
     "Result Declaration Rush": {
@@ -109,29 +119,31 @@ SCENARIOS = {
     },
 }
 
-NAV_ITEMS_ADMIN = [
+NAV_ADMIN = [
     ("Dashboard", "🏠"),
     ("Simulator", "🚀"),
+    ("Custom Stress Lab", "🧪"),
+    ("All Accounts Directory", "👥"),
     ("Student Portal & DB", "🎓"),
     ("Faculty Studio", "👨‍🏫"),
-    ("Week 2.5 Architecture", "⚡"),
     ("Telemetry", "📊"),
-    ("Models", "⚙️"),
-    ("Scenarios", "📅"),
+    ("Models (ML)", "⚙️"),
+    ("Benchmarks (ML)", "🏆"),
     ("Insights", "📈"),
-    ("Benchmarks", "🏆"),
+    ("Week 2.5 Architecture", "⚡"),
     ("Reports", "📄"),
 ]
 
-NAV_ITEMS_FACULTY = [
+NAV_FACULTY = [
     ("Faculty Studio", "👨‍🏫"),
-    ("Student Portal & DB", "🎓"),
+    ("Student Roster", "🎓"),
+    ("AI Traffic Forecast", "📈"),
     ("Week 2.5 Architecture", "⚡"),
-    ("Telemetry", "📊"),
 ]
 
-NAV_ITEMS_STUDENT = [
-    ("Student Portal & DB", "🎓"),
+NAV_STUDENT = [
+    ("My Student Portal", "🎓"),
+    ("Session Health & Redirect Risk", "🛡️"),
     ("Week 2.5 Architecture", "⚡"),
 ]
 
@@ -142,6 +154,13 @@ def get_image_base64(path: Path) -> str:
     return ""
 
 
+def calculate_student_redirect_risk(users: int, safe_capacity: float) -> float:
+    """Calculates student session redirect / disconnect risk percentage."""
+    ratio = users / max(safe_capacity, 1.0)
+    risk = (ratio**2.5) * 15.0
+    return float(round(np.clip(risk, 1.0, 99.0), 1))
+
+
 def synthesize_telemetry(
     scenario_name: str,
     users: int,
@@ -150,6 +169,9 @@ def synthesize_telemetry(
     cache_hit_ratio: float = 0.70,
     waiting_room_enabled: bool = False,
     degraded_mode: bool = False,
+    db_lock_surge: bool = False,
+    net_loss_spike: bool = False,
+    mem_pressure: bool = False,
     sla_latency: float = SLA_LATENCY,
     sla_cpu: float = SLA_CPU,
 ) -> dict:
@@ -161,7 +183,7 @@ def synthesize_telemetry(
 
     pod_mult = (num_pods / 4.0) ** 0.88
     cache_mult = 1.0 + (cache_hit_ratio * 0.45)
-    db_mult = min(1.3, max(0.5, db_pool_size / 100.0))
+    db_mult = min(1.4, max(0.4, db_pool_size / 100.0))
     knee = int(base_knee * pod_mult * cache_mult * db_mult)
 
     if waiting_room_enabled and users > knee:
@@ -181,30 +203,36 @@ def synthesize_telemetry(
     cpu = float(np.clip(cpu, 12.0, 100.0))
 
     mem = 22.0 + (load_ratio**0.9) * 42.0 * (0.8 + 0.2 * workload) + (cache_hit_ratio * 12.0)
-    mem = float(np.clip(mem, 18.0, 96.0))
+    if mem_pressure:
+        mem += 28.0
+    mem = float(np.clip(mem, 18.0, 99.0))
 
     net = (admitted_rps / (450.0 * num_pods)) * 80.0 * (0.7 + 0.3 * workload)
     net = float(np.clip(net, 4.0, 98.0))
 
     db_queries_per_sec = admitted_rps * (1.0 - (cache_hit_ratio * 0.85))
     conns_needed = max(4, int(db_queries_per_sec * (0.055 if cfg["is_result"] == 1 else 0.030)))
+    if db_lock_surge:
+        conns_needed = int(conns_needed * 2.2)
     active_db_conns = min(db_pool_size, conns_needed)
     db_pool_util = (active_db_conns / float(db_pool_size)) * 100.0
 
     cdn_latency = float(np.clip(6.0 + (admitted_rps / 2000.0) * 8.0, 5.0, 25.0))
     app_latency = float(np.clip(14.0 + ((cpu / 100.0) ** 2.4) * 110.0, 10.0, 800.0))
 
+    db_mult_latency = 3.0 if db_lock_surge else 1.0
     if db_pool_util < 75.0:
-        db_latency = float(np.clip(10.0 + ((db_pool_util / 75.0) ** 1.8) * 45.0, 8.0, 90.0))
+        db_latency = float(np.clip(10.0 + ((db_pool_util / 75.0) ** 1.8) * 45.0, 8.0, 90.0)) * db_mult_latency
     else:
         overshoot_db = (db_pool_util - 75.0) / 25.0
-        db_latency = float(np.clip(55.0 + (overshoot_db**2.8) * 4200.0, 55.0, 6500.0))
+        db_latency = float(np.clip(55.0 + (overshoot_db**2.8) * 4200.0, 55.0, 7500.0)) * db_mult_latency
 
-    network_latency = float(np.clip(10.0 + (net / 100.0) * 18.0, 8.0, 40.0))
-    total_latency = float(np.clip(cdn_latency + app_latency + db_latency + network_latency, 25.0, 8000.0))
+    net_add = 150.0 if net_loss_spike else 0.0
+    network_latency = float(np.clip(10.0 + (net / 100.0) * 18.0 + net_add, 8.0, 250.0))
+    total_latency = float(np.clip(cdn_latency + app_latency + db_latency + network_latency, 25.0, 9999.0))
 
     base_cap = 7800.0 if cfg["is_result"] == 1 else 9400.0
-    safe_cap = max(3200.0, (base_cap * pod_mult * cache_mult * db_mult) - (cpu - 20.0) * 8.5)
+    safe_cap = max(2500.0, (base_cap * pod_mult * cache_mult * db_mult) - (cpu - 20.0) * 8.5)
     safe_cap = round(safe_cap, 0)
 
     util = (users / max(safe_cap, 1.0)) * 100.0
@@ -216,12 +244,16 @@ def synthesize_telemetry(
     else:
         wait_time_mins = 0.0
 
+    redirect_risk = calculate_student_redirect_risk(users, safe_cap)
+
     if db_pool_util >= 92.0:
         bottleneck = "Database Connection Pool Exhaustion 🗄️"
     elif cpu >= sla_cpu:
         bottleneck = "Backend Pod CPU Throttling 🖥️"
     elif total_latency >= sla_latency:
         bottleneck = "Queuing Saturation Knee Breached ⚡"
+    elif net_loss_spike:
+        bottleneck = "Injected Network Packet Loss & Egress Congestion 🌐"
     else:
         bottleneck = "Nominal Balanced Headroom 🛡️"
 
@@ -229,12 +261,12 @@ def synthesize_telemetry(
         risk_state = "CRITICAL"
         risk_color = "#EF4444"
         action_title = "PROTECT MODE ACTIVATED"
-        action_desc = "Action: Active Queueing, Database Pool Throttling & Load Shedding"
+        action_desc = "Action: Active Queueing, Database Pool Throttling & Emergency Load Shedding"
     elif util >= 70.0 or db_pool_util >= 70.0:
         risk_state = "WARNING"
         risk_color = "#F59E0B"
         action_title = "PREPARE MODE ARMED"
-        action_desc = "Action: Rate Limiting & Virtual Waiting Room Warm-up"
+        action_desc = "Action: Rate Limiting, Pre-warming Pods & Virtual Waiting Room Warm-up"
     else:
         risk_state = "SAFE"
         risk_color = "#10B981"
@@ -246,6 +278,7 @@ def synthesize_telemetry(
         "admitted_users": admitted_users,
         "queued_users": queued_users,
         "wait_time_mins": wait_time_mins,
+        "redirect_risk": redirect_risk,
         "rps": raw_rps,
         "admitted_rps": admitted_rps,
         "cpu": round(cpu, 1),
@@ -279,23 +312,23 @@ def inject_custom_css() -> None:
     st.markdown(
         """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap');
 
 html, body, [class*="css"], .stApp {
   font-family: 'Plus Jakarta Sans', -apple-system, sans-serif !important;
-  background-color: #FBFDFB !important;
-  color: #1E293B;
+  background-color: #F8FAFC !important;
+  color: #0F172A;
 }
 
 .block-container {
   padding-top: 1.0rem;
   padding-bottom: 2.5rem;
-  max-width: 1360px;
+  max-width: 1380px;
 }
 
 [data-testid="stSidebar"] {
   background-color: #FFFFFF !important;
-  border-right: 1px solid #F1F5F9;
+  border-right: 1px solid #E2E8F0;
   padding-top: 1rem;
 }
 
@@ -303,57 +336,57 @@ html, body, [class*="css"], .stApp {
   width: 100%;
   border-radius: 18px;
   overflow: hidden;
-  margin-bottom: 16px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.04);
-  border: 1px solid #F1F5F9;
+  margin-bottom: 18px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+  border: 1px solid #E2E8F0;
 }
 
 .banner-container img {
   width: 100%;
-  height: 140px;
+  height: 145px;
   object-fit: cover;
   display: block;
 }
 
 .header-box {
   background: #FFFFFF;
-  border: 1px solid #F1F5F9;
+  border: 1px solid #E2E8F0;
   border-radius: 20px;
-  padding: 20px 26px;
+  padding: 22px 28px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 18px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.02);
+  margin-bottom: 20px;
+  box-shadow: 0 2px 14px rgba(0,0,0,0.03);
 }
 
 .header-title h1 {
-  font-size: 25px;
-  font-weight: 800;
+  font-size: 26px;
+  font-weight: 900;
   color: #0F172A;
   margin: 0;
   letter-spacing: -0.02em;
 }
 
 .header-title p {
-  color: #64748B;
-  font-size: 13.5px;
-  margin: 4px 0 0 0;
+  color: #475569;
+  font-size: 14px;
+  margin: 5px 0 0 0;
 }
 
 .kpi-container {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 12px;
-  margin-bottom: 18px;
+  gap: 14px;
+  margin-bottom: 20px;
 }
 
 .kpi-card {
   background: #FFFFFF;
-  border: 1px solid #F1F5F9;
+  border: 1px solid #E2E8F0;
   border-radius: 16px;
-  padding: 14px 16px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.02);
+  padding: 16px 18px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.02);
   transition: transform 0.15s ease;
 }
 
@@ -363,27 +396,27 @@ html, body, [class*="css"], .stApp {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   color: #64748B;
 }
 
 .kpi-value {
-  font-size: 22px;
-  font-weight: 800;
+  font-size: 24px;
+  font-weight: 900;
   color: #0F172A;
   margin: 6px 0 2px 0;
   letter-spacing: -0.02em;
 }
 
-.kpi-sub { font-size: 11px; color: #94A3B8; }
+.kpi-sub { font-size: 11.5px; color: #94A3B8; }
 
 .main-card {
   background: #FFFFFF;
-  border: 1px solid #F1F5F9;
+  border: 1px solid #E2E8F0;
   border-radius: 20px;
-  padding: 20px 22px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  padding: 22px 26px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.03);
   height: 100%;
 }
 
@@ -391,28 +424,44 @@ html, body, [class*="css"], .stApp {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 800;
   color: #0F172A;
   margin-bottom: 4px;
 }
 
 .card-subtitle {
-  font-size: 12px;
-  color: #94A3B8;
+  font-size: 12.5px;
+  color: #64748B;
   margin-bottom: 14px;
+}
+
+/* Big metric callout box */
+.risk-callout {
+  background: linear-gradient(135deg, #FEF2F2 0%, #FFF1F2 100%);
+  border: 2px solid #FECACA;
+  border-radius: 18px;
+  padding: 24px;
+  text-align: center;
+  margin: 16px 0;
+}
+
+.risk-number {
+  font-size: 54px;
+  font-weight: 900;
+  line-height: 1.1;
 }
 
 div.stButton > button {
   width: 100%;
   text-align: left;
   border-radius: 10px;
-  font-weight: 600;
-  font-size: 13px;
-  padding: 8px 12px;
+  font-weight: 700;
+  font-size: 13.5px;
+  padding: 9px 14px;
   border: 1px solid transparent;
   background-color: transparent;
-  color: #64748B;
+  color: #475569;
   transition: all 0.15s ease;
   display: flex;
   align-items: center;
@@ -420,16 +469,16 @@ div.stButton > button {
 }
 
 div.stButton > button:hover {
-  background-color: #F8FAFC;
+  background-color: #F1F5F9;
   color: #0F172A;
-  border-color: #E2E8F0;
+  border-color: #CBD5E1;
 }
 
 .footer-text {
   text-align: center;
-  font-size: 12px;
+  font-size: 12.5px;
   color: #94A3B8;
-  margin-top: 24px;
+  margin-top: 30px;
 }
 </style>
         """,
@@ -437,73 +486,114 @@ div.stButton > button:hover {
     )
 
 
-def render_sidebar(tel: dict) -> Tuple[str, str]:
-    if "current_role" not in st.session_state:
-        st.session_state.current_role = "admin"
-    if "active_nav" not in st.session_state:
-        st.session_state.active_nav = "Dashboard"
+def render_login_screen(mascot_b64: str) -> None:
+    """Renders high-fidelity initial login gate when unauthenticated."""
+    st.markdown(
+        f"""
+<div style="max-width:700px;margin:30px auto 20px auto;background:#FFFFFF;border:1px solid #E2E8F0;border-radius:24px;padding:32px 36px;box-shadow:0 8px 30px rgba(0,0,0,0.06);text-align:center;">
+  {'<img src="data:image/jpeg;base64,' + mascot_b64 + '" style="width:95px;height:95px;border-radius:20px;object-fit:cover;box-shadow:0 4px 16px rgba(0,0,0,0.08);margin-bottom:14px;">' if mascot_b64 else ''}
+  <h1 style="font-size:28px;font-weight:900;color:#0F172A;margin:0 0 6px 0;letter-spacing:-0.02em;">PortalPulse Gateway 🛡️</h1>
+  <p style="font-size:14px;color:#64748B;margin:0 0 24px 0;">Quantum-Resistant Academic Traffic Intelligence & Capacity Protection</p>
+  <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:10px;font-size:12px;color:#166534;font-weight:700;margin-bottom:20px;">
+    🔐 256-Bit Post-Quantum Symmetric Key Verification Enabled
+  </div>
+</div>
+        """,
+        unsafe_allow_html=True,
+    )
 
+    col_box, _ = st.columns([1, 0.01])
+    with col_box:
+        login_tab1, login_tab2, login_tab3 = st.tabs(["🎓 Student Login", "👨‍🏫 Faculty Login", "🛡️ Master Admin Login"])
+
+        with login_tab1:
+            st.markdown("##### Student Portal Access")
+            s_enroll = st.text_input("Enrollment Number", value="2024CS1001", placeholder="e.g. 2024CS1001").strip().upper()
+            s_key = st.text_input("Student Quantum Key", value=QUANTUM_KEYS["student"], type="password")
+
+            if st.button("🚀 Enter Student Portal", type="primary", use_container_width=True):
+                role = validate_quantum_key(s_key)
+                if role == "student" or role == "admin":
+                    st.session_state.authenticated = True
+                    st.session_state.current_role = "student"
+                    st.session_state.user_identifier = s_enroll
+                    st.session_state.active_nav = "My Student Portal"
+                    st.rerun()
+                else:
+                    st.error("Invalid Student Quantum Key. Use the demo key provided.")
+
+        with login_tab2:
+            st.markdown("##### Faculty Studio Access")
+            f_id = st.text_input("Faculty ID", value="FAC-CSE-101", placeholder="e.g. FAC-CSE-101").strip()
+            f_key = st.text_input("Faculty Quantum Key", value=QUANTUM_KEYS["faculty"], type="password")
+
+            if st.button("🚀 Enter Faculty Studio", type="primary", use_container_width=True):
+                role = validate_quantum_key(f_key)
+                if role == "faculty" or role == "admin":
+                    st.session_state.authenticated = True
+                    st.session_state.current_role = "faculty"
+                    st.session_state.user_identifier = f_id
+                    st.session_state.active_nav = "Faculty Studio"
+                    st.rerun()
+                else:
+                    st.error("Invalid Faculty Quantum Key. Use the demo key provided.")
+
+        with login_tab3:
+            st.markdown("##### Master Admin Control Tower")
+            a_key = st.text_input("Master Quantum Key", value=QUANTUM_KEYS["admin"], type="password")
+
+            if st.button("👑 Enter Master Admin Tower", type="primary", use_container_width=True):
+                role = validate_quantum_key(a_key)
+                if role == "admin":
+                    st.session_state.authenticated = True
+                    st.session_state.current_role = "admin"
+                    st.session_state.user_identifier = "Master Architect"
+                    st.session_state.active_nav = "Dashboard"
+                    st.rerun()
+                else:
+                    st.error("Invalid Master Quantum Key.")
+
+
+def render_sidebar(tel: dict) -> Tuple[str, str]:
     with st.sidebar:
         st.markdown(
             """
 <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
-  <div style="font-size:24px;">🛡️</div>
+  <div style="font-size:26px;">🛡️</div>
   <div>
-    <div style="font-weight:800;font-size:18px;color:#0F172A;letter-spacing:-0.02em;">PortalPulse</div>
-    <div style="font-size:11px;color:#94A3B8;">Quantum-Secure Traffic Control</div>
+    <div style="font-weight:900;font-size:19px;color:#0F172A;letter-spacing:-0.02em;">PortalPulse</div>
+    <div style="font-size:11.5px;color:#64748B;">Quantum-Secure Traffic Control</div>
   </div>
 </div>
             """,
             unsafe_allow_html=True,
         )
 
-        # 1. Quantum Key Role Authenticator
-        st.markdown("<div style='font-size:11px;font-weight:700;color:#94A3B8;text-transform:uppercase;margin-bottom:6px;'>🔐 Quantum Key Access</div>", unsafe_allow_html=True)
-        
-        role_labels = {
-            "admin": "🛡️ Master Admin (You)",
-            "faculty": "👨‍🏫 Faculty Member",
-            "student": "🎓 Student Persona",
+        role = st.session_state.get("current_role", "admin")
+        role_badges = {
+            "admin": ("🛡️ MASTER ADMIN", "#DC2626", "#FEF2F2", "#FECACA"),
+            "faculty": ("👨‍🏫 FACULTY", "#D97706", "#FFFBEB", "#FDE68A"),
+            "student": ("🎓 STUDENT", "#16A34A", "#F0FDF4", "#BBF7D0"),
         }
-        
-        selected_role_key = st.selectbox(
-            "Active Persona",
-            options=["admin", "faculty", "student"],
-            format_func=lambda x: role_labels[x],
-            index=["admin", "faculty", "student"].index(st.session_state.current_role),
-            label_visibility="collapsed",
-        )
-        
-        if selected_role_key != st.session_state.current_role:
-            st.session_state.current_role = selected_role_key
-            if selected_role_key == "student":
-                st.session_state.active_nav = "Student Portal & DB"
-            elif selected_role_key == "faculty":
-                st.session_state.active_nav = "Faculty Studio"
-            else:
-                st.session_state.active_nav = "Dashboard"
-            st.rerun()
-
-        # Display Quantum Key Badge
-        curr_key = QUANTUM_KEYS[st.session_state.current_role]
+        title, fg, bg, border = role_badges[role]
         st.markdown(
             f"""
-<div style="background:#F1F5F9;border:1px solid #E2E8F0;border-radius:8px;padding:6px 10px;font-size:10.5px;color:#475569;margin-bottom:14px;word-break:break-all;">
-  <b>Quantum Key:</b> <code>{curr_key[:12]}...{curr_key[-4:]}</code>
+<div style="background:{bg};border:1px solid {border};border-radius:10px;padding:8px 12px;margin-bottom:14px;">
+  <div style="font-size:10px;font-weight:800;color:{fg};text-transform:uppercase;">Active Account</div>
+  <div style="font-size:12.5px;font-weight:800;color:#0F172A;">{st.session_state.get('user_identifier', title)}</div>
 </div>
             """,
             unsafe_allow_html=True,
         )
 
-        # 2. Navigation Items according to Role
-        if st.session_state.current_role == "admin":
-            nav_list = NAV_ITEMS_ADMIN
-        elif st.session_state.current_role == "faculty":
-            nav_list = NAV_ITEMS_FACULTY
+        # Scoped Navigation
+        if role == "admin":
+            nav_list = NAV_ADMIN
+        elif role == "faculty":
+            nav_list = NAV_FACULTY
         else:
-            nav_list = NAV_ITEMS_STUDENT
+            nav_list = NAV_STUDENT
 
-        # Ensure active_nav is in available list
         available_labels = [label for label, _ in nav_list]
         if st.session_state.active_nav not in available_labels:
             st.session_state.active_nav = available_labels[0]
@@ -515,35 +605,31 @@ def render_sidebar(tel: dict) -> Tuple[str, str]:
                 st.session_state.active_nav = label
                 st.rerun()
 
-        st.markdown("<hr style='border:0;border-top:1px solid #F1F5F9;margin:16px 0;'>", unsafe_allow_html=True)
-        st.markdown("<div style='font-size:11px;font-weight:700;color:#94A3B8;text-transform:uppercase;margin-bottom:8px;'>System Mode</div>", unsafe_allow_html=True)
+        st.markdown("<hr style='border:0;border-top:1px solid #E2E8F0;margin:16px 0;'>", unsafe_allow_html=True)
+
+        if st.button("🚪 Logout / Switch Persona", use_container_width=True):
+            st.session_state.authenticated = False
+            st.session_state.current_role = None
+            st.session_state.user_identifier = None
+            st.rerun()
+
+        st.markdown("<hr style='border:0;border-top:1px solid #E2E8F0;margin:16px 0;'>", unsafe_allow_html=True)
+        st.markdown("<div style='font-size:11px;font-weight:800;color:#64748B;text-transform:uppercase;margin-bottom:8px;'>System Mode</div>", unsafe_allow_html=True)
 
         mode = tel["risk_state"]
         st.markdown(
             f"""
-<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:{'#ECFDF5' if mode == 'SAFE' else '#F8FAFC'};border-radius:8px;font-size:12px;color:{'#059669' if mode == 'SAFE' else '#64748B'};font-weight:600;margin-bottom:4px;">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:{'#ECFDF5' if mode == 'SAFE' else '#F8FAFC'};border-radius:8px;font-size:12px;color:{'#059669' if mode == 'SAFE' else '#64748B'};font-weight:700;margin-bottom:4px;">
   <span>🟢 Monitor</span>
   <span>{'✓' if mode == 'SAFE' else ''}</span>
 </div>
-<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:{'#FFFBEB' if mode == 'WARNING' else '#F8FAFC'};border-radius:8px;font-size:12px;color:{'#D97706' if mode == 'WARNING' else '#64748B'};font-weight:600;margin-bottom:4px;">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:{'#FFFBEB' if mode == 'WARNING' else '#F8FAFC'};border-radius:8px;font-size:12px;color:{'#D97706' if mode == 'WARNING' else '#64748B'};font-weight:700;margin-bottom:4px;">
   <span>🟡 Prepare</span>
   <span>{'✓' if mode == 'WARNING' else ''}</span>
 </div>
-<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:{'#FEF2F2' if mode == 'CRITICAL' else '#F8FAFC'};border-radius:8px;font-size:12px;color:{'#DC2626' if mode == 'CRITICAL' else '#64748B'};font-weight:600;">
+<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:{'#FEF2F2' if mode == 'CRITICAL' else '#F8FAFC'};border-radius:8px;font-size:12px;color:{'#DC2626' if mode == 'CRITICAL' else '#64748B'};font-weight:700;">
   <span>🔴 Protect</span>
   <span>{'✓' if mode == 'CRITICAL' else ''}</span>
-</div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            """
-<div style="background:#FEFCE8;border:1px solid #FEF08A;border-radius:14px;padding:14px;margin-top:20px;">
-  <div style="font-size:12px;font-weight:800;color:#854D0E;">PortalPulse Mission 🌱</div>
-  <div style="font-size:11px;color:#A16207;margin-top:4px;line-height:1.45;">
-    Prevent portal slowdowns before they happen. Always one step ahead.
-  </div>
 </div>
             """,
             unsafe_allow_html=True,
@@ -553,7 +639,7 @@ def render_sidebar(tel: dict) -> Tuple[str, str]:
 
 
 def main() -> None:
-    st.set_page_config(page_title="PortalPulse · Quantum-Secure Traffic Orchestrator", page_icon="🛡️", layout="wide")
+    st.set_page_config(page_title="PortalPulse · Intelligent Traffic Orchestrator", page_icon="🛡️", layout="wide")
     inject_custom_css()
     init_db()
 
@@ -562,16 +648,21 @@ def main() -> None:
     campus_b64 = get_image_base64(CAMPUS_PATH)
     shield_b64 = get_image_base64(SHIELD_PATH)
 
-    if banner_b64:
-        st.markdown(
-            f"""
+    # Check authentication state
+    if not st.session_state.get("authenticated", False):
+        if banner_b64:
+            st.markdown(
+                f"""
 <div class="banner-container">
   <img src="data:image/jpeg;base64,{banner_b64}">
 </div>
-            """,
-            unsafe_allow_html=True,
-        )
+                """,
+                unsafe_allow_html=True,
+            )
+        render_login_screen(mascot_b64)
+        return
 
+    # Session State for Workload & Custom Testing Parameters
     if "selected_scenario" not in st.session_state:
         st.session_state.selected_scenario = "Result Declaration Rush"
     if "user_demand" not in st.session_state:
@@ -586,40 +677,53 @@ def main() -> None:
         st.session_state.waiting_room = False
     if "degraded_mode" not in st.session_state:
         st.session_state.degraded_mode = False
+    if "db_lock_surge" not in st.session_state:
+        st.session_state.db_lock_surge = False
+    if "net_loss_spike" not in st.session_state:
+        st.session_state.net_loss_spike = False
+    if "mem_pressure" not in st.session_state:
+        st.session_state.mem_pressure = False
 
+    # Compute Telemetry
     tel = synthesize_telemetry(
         scenario_name=st.session_state.selected_scenario,
-        users=st.session_state.user_demand,
-        num_pods=st.session_state.num_pods,
-        db_pool_size=st.session_state.db_pool_size,
-        cache_hit_ratio=st.session_state.cache_hit_pct / 100.0,
+        users=int(st.session_state.user_demand),
+        num_pods=int(st.session_state.num_pods),
+        db_pool_size=int(st.session_state.db_pool_size),
+        cache_hit_ratio=float(st.session_state.cache_hit_pct) / 100.0,
         waiting_room_enabled=st.session_state.waiting_room,
         degraded_mode=st.session_state.degraded_mode,
+        db_lock_surge=st.session_state.db_lock_surge,
+        net_loss_spike=st.session_state.net_loss_spike,
+        mem_pressure=st.session_state.mem_pressure,
     )
 
     current_tab, current_role = render_sidebar(tel)
     db_stats = get_db_stats()
 
-    # Top Hero Header
-    role_badge_titles = {
-        "admin": ("🛡️ MASTER ADMIN TOWER", "#DC2626", "#FEF2F2", "#FECACA"),
-        "faculty": ("👨‍🏫 FACULTY DASHBOARD", "#D97706", "#FFFBEB", "#FDE68A"),
-        "student": ("🎓 STUDENT PORTAL", "#16A34A", "#F0FDF4", "#BBF7D0"),
-    }
-    badge_title, badge_fg, badge_bg, badge_border = role_badge_titles[current_role]
+    if banner_b64:
+        st.markdown(
+            f"""
+<div class="banner-container">
+  <img src="data:image/jpeg;base64,{banner_b64}">
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
 
+    # Top Hero Header
     st.markdown(
         f"""
 <div class="header-box">
   <div class="header-title">
-    <div style="font-size:12px;font-weight:600;color:#64748B;margin-bottom:4px;">Authenticated Persona: <b>{current_role.upper()}</b> 👋</div>
+    <div style="font-size:12.5px;font-weight:700;color:#64748B;margin-bottom:4px;">Authenticated Account: <b>{st.session_state.get('user_identifier', 'User')}</b> ({current_role.upper()}) 👋</div>
     <h1>Smart Predictions. Stronger Portals. 🌱</h1>
-    <p>Quantum-entropy security, real database persistence & hybrid Redis caching. ✨</p>
+    <p>AI-powered insights, real database persistence & hybrid Redis caching. ✨</p>
   </div>
   <div style="display:flex;align-items:center;gap:16px;">
-    <div style="background:{badge_bg};border:1px solid {badge_border};border-radius:12px;padding:8px 12px;text-align:right;">
-      <div style="font-size:11px;font-weight:800;color:{badge_fg};text-transform:uppercase;">{badge_title}</div>
-      <div style="font-size:11.5px;color:#1E293B;font-weight:700;">{db_stats['student_count']:,} Students · {db_stats['cache']['backend']}</div>
+    <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-radius:12px;padding:8px 14px;text-align:right;">
+      <div style="font-size:11px;font-weight:800;color:#16A34A;text-transform:uppercase;">DATABASE & CACHE STATUS</div>
+      <div style="font-size:12px;color:#15803D;font-weight:800;">{db_stats['student_count']:,} Students · {db_stats['cache']['backend']}</div>
     </div>
     {'<img src="data:image/jpeg;base64,' + mascot_b64 + '" style="width:75px;height:75px;border-radius:16px;object-fit:cover;box-shadow:0 4px 12px rgba(0,0,0,0.06);">' if mascot_b64 else ''}
   </div>
@@ -628,11 +732,161 @@ def main() -> None:
         unsafe_allow_html=True,
     )
 
-    # -------------------------------------------------------------
-    # TAB: DASHBOARD & SIMULATOR (Admin Only)
-    # -------------------------------------------------------------
-    if current_tab in ["Dashboard", "Simulator"] and current_role == "admin":
-        st.markdown('<div style="font-size:13px;font-weight:700;color:#475569;margin-bottom:8px;">⚙️ Workload & Infrastructure Parameters</div>', unsafe_allow_html=True)
+    # =========================================================================
+    # ROLE: STUDENT PERSONA WORKSPACE
+    # =========================================================================
+    if current_role == "student":
+        if current_tab in ["My Student Portal", "Student Portal & DB"]:
+            st.markdown('<div class="main-card"><div class="card-title">🎓 Student Academic Portal</div><div class="card-subtitle">Personal enrolled courses, grade card, and real-time database query timing.</div></div>', unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            s_enroll = st.session_state.get("user_identifier", "2024CS1001")
+            res = get_student_results(s_enroll, bypass_cache=False)
+
+            if res.get("found"):
+                s = res["student"]
+                badge_color = "#10B981" if res.get("cache_hit") else "#3B82F6"
+                st.markdown(
+                    f"""
+<div style="background:#FFFFFF;border:1px solid #E2E8F0;border-radius:18px;padding:20px;box-shadow:0 2px 8px rgba(0,0,0,0.02);margin-bottom:16px;">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <div>
+      <div style="font-size:22px;font-weight:900;color:#0F172A;">{s['name']}</div>
+      <div style="font-size:13px;color:#64748B;margin-top:2px;"><b>Enrollment:</b> {s['enrollment_no']} &nbsp;|&nbsp; <b>Department:</b> {s['department']}</div>
+    </div>
+    <div style="text-align:right;">
+      <div style="font-size:11px;color:#94A3B8;font-weight:700;">CURRENT CGPA</div>
+      <div style="font-size:28px;font-weight:900;color:#10B981;">{s['cgpa']}</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:12px;margin-top:14px;">
+    <div style="background:#F8FAFC;padding:8px 12px;border-radius:10px;font-size:12px;"><b>Year:</b> {s['year']} (4-Year B.Tech)</div>
+    <div style="background:#F8FAFC;padding:8px 12px;border-radius:10px;font-size:12px;"><b>Semester:</b> {s['semester']}</div>
+    <div style="background:{badge_color};color:#FFFFFF;padding:8px 12px;border-radius:10px;font-size:12px;font-weight:700;">{res['source']} ({res['query_duration_ms']} ms)</div>
+  </div>
+</div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                st.markdown("##### 📄 Published Course Grades")
+                st.dataframe(pd.DataFrame(res["results"])[["semester", "subject_code", "subject_name", "credits", "grade", "points"]], use_container_width=True, hide_index=True)
+            else:
+                st.warning("Student profile not found in database.")
+
+        elif current_tab == "Session Health & Redirect Risk":
+            st.markdown('<div class="main-card"><div class="card-title">🛡️ Live Session Stability & Redirect Risk Meter</div><div class="card-subtitle">Real-time portal load monitoring to ensure your session remains active during peak rush.</div></div>', unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            risk_pct = tel["redirect_risk"]
+            if risk_pct < 20.0:
+                risk_color = "#10B981"
+                status_text = "🟢 SESSION STABLE — LOW REDIRECT RISK"
+                advice_text = "Traffic is well within safe capacity limits. Your session will remain fast and uninterrupted."
+            elif risk_pct < 60.0:
+                risk_color = "#F59E0B"
+                status_text = "🟡 MODERATE CONGESTION — QUEUEING ACTIVE"
+                advice_text = "Portal is experiencing heavy query traffic. Do not refresh frequently to avoid losing your active queue position."
+            else:
+                risk_color = "#EF4444"
+                status_text = "🔴 HIGH SPIKE TRAFFIC — REDIRECT RISK ELEVATED"
+                advice_text = "Emergency protection active. Requests are being rate-limited to preserve database transaction stability."
+
+            st.markdown(
+                f"""
+<div class="risk-callout" style="background:{'#FEF2F2' if risk_pct >= 60 else ('#FFFBEB' if risk_pct >= 20 else '#F0FDF4')};border-color:{risk_color};">
+  <div style="font-size:13px;font-weight:800;color:{risk_color};text-transform:uppercase;">Live Student Redirect & Timeout Risk</div>
+  <div class="risk-number" style="color:{risk_color};">{risk_pct}%</div>
+  <div style="font-size:16px;font-weight:800;color:#0F172A;margin-top:6px;">{status_text}</div>
+  <div style="font-size:13.5px;color:#475569;margin-top:8px;max-width:550px;margin-left:auto;margin-right:auto;">{advice_text}</div>
+</div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+        elif current_tab == "Week 2.5 Architecture":
+            render_week25_tab()
+
+        return
+
+    # =========================================================================
+    # ROLE: FACULTY PERSONA WORKSPACE
+    # =========================================================================
+    if current_role == "faculty":
+        if current_tab in ["Faculty Studio", "Student Roster"]:
+            st.markdown('<div class="main-card"><div class="card-title">👨‍🏫 Faculty Academic Studio & Roster</div><div class="card-subtitle">Manage course student rosters, enter/update semester grades, and view grade distributions.</div></div>', unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            f_col1, f_col2 = st.columns([1.1, 1.9])
+            with f_col1:
+                st.subheader("📝 Grade Submission & Publishing")
+                with st.form("faculty_grade_form"):
+                    f_enroll = st.text_input("Student Enrollment No*", value="2024CS1001").strip().upper()
+                    f_sem = st.selectbox("Semester*", options=list(range(1, 9)), index=0)
+                    f_sub = st.text_input("Subject Code*", value="CS501-1", placeholder="e.g. CS501-1, IT501-1")
+                    f_grade = st.selectbox("Assign Grade*", options=["O (10.0)", "A+ (9.0)", "A (8.0)", "B+ (7.0)", "B (6.0)", "F (0.0)"], index=1)
+
+                    grade_map = {"O (10.0)": ("O", 10.0), "A+ (9.0)": ("A+", 9.0), "A (8.0)": ("A", 8.0), "B+ (7.0)": ("B+", 7.0), "B (6.0)": ("B", 6.0), "F (0.0)": ("F", 0.0)}
+                    publish_btn = st.form_submit_button("📤 Publish Grade Update", type="primary", use_container_width=True)
+                    if publish_btn:
+                        g_letter, g_pts = grade_map[f_grade]
+                        ok, msg = update_student_grade(f_enroll, f_sem, f_sub, g_letter, g_pts)
+                        if ok:
+                            st.success(msg)
+                        else:
+                            st.error(msg)
+
+            with f_col2:
+                st.subheader("📋 Departmental Student Roster")
+                dept_select = st.selectbox(
+                    "Filter by Department",
+                    options=[
+                        "Computer Science & Engineering",
+                        "Information Technology",
+                        "Electronics & Communication",
+                        "Mechanical Engineering",
+                        "Electrical Engineering",
+                    ],
+                )
+                dept_students = get_students_by_department(dept_select)
+                if dept_students:
+                    df_dept = pd.DataFrame(dept_students)[["enrollment_no", "name", "year", "semester", "cgpa", "status"]]
+                    st.dataframe(df_dept, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No students found in this department.")
+
+        elif current_tab == "AI Traffic Forecast":
+            today_str = datetime.now().strftime("%B %d, %Y")
+            st.markdown(f'<div class="main-card"><div class="card-title">📈 AI Traffic & Attendance Forecast for Today ({today_str})</div><div class="card-subtitle">Expected student portal demand, submission rush hours, and capacity outlook.</div></div>', unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            fc1, fc2, fc3, fc4 = st.columns(4)
+            fc1.metric("Predicted Total Queries Today", "148,500 reqs", "↑ 14% vs yesterday")
+            fc2.metric("Peak Rush Window", "10:30 AM - 12:45 PM", "Result Publication")
+            fc3.metric("Expected Max Concurrency", "8,900 students", "92% Safe Capacity")
+            fc4.metric("Recommended Assignment Due Time", "11:59 PM (Off-Peak)", "Saves 35% DB Load")
+
+            st.markdown("##### 🕒 Hourly Projected Traffic Demand Curve")
+            hours = [f"{h}:00" for h in range(8, 22)]
+            forecast_traffic = [2400, 4800, 8900, 8200, 5400, 4200, 6100, 7800, 6500, 4300, 3100, 2100, 1500, 950]
+            fig_fc = px.line(x=hours, y=forecast_traffic, markers=True, labels={"x": "Hour of Day", "y": "Projected Concurrent Students"})
+            fig_fc.update_traces(line_color="#3B82F6", line_width=3)
+            fig_fc.add_hline(y=tel["safe_capacity"], line_dash="dash", line_color="#EF4444", annotation_text=f"Safe Cap ({tel['safe_capacity']:,.0f})")
+            fig_fc.update_layout(height=320, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#FFFFFF", margin=dict(l=30, r=20, t=20, b=30))
+            st.plotly_chart(fig_fc, use_container_width=True)
+
+        elif current_tab == "Week 2.5 Architecture":
+            render_week25_tab()
+
+        return
+
+    # =========================================================================
+    # ROLE: MASTER ADMIN CONTROL TOWER (Exclusive Access)
+    # =========================================================================
+
+    # 1. TAB: DASHBOARD & SIMULATOR
+    if current_tab in ["Dashboard", "Simulator"]:
+        st.markdown('<div style="font-size:14px;font-weight:800;color:#334155;margin-bottom:8px;">⚙️ Operational Scenario & Concurrency Presets</div>', unsafe_allow_html=True)
         c_scen, c_users = st.columns([1.2, 2.0])
         with c_scen:
             st.session_state.selected_scenario = st.selectbox(
@@ -644,7 +898,7 @@ def main() -> None:
             st.session_state.user_demand = st.slider(
                 "Concurrent Users (Demand)",
                 min_value=500,
-                max_value=16000,
+                max_value=20000,
                 value=int(st.session_state.user_demand),
                 step=100,
             )
@@ -652,11 +906,11 @@ def main() -> None:
         with st.expander("🛠️ Advanced Cluster & Mitigation Controls (Pods, DB Pool, Redis Caching, Waiting Room)", expanded=(current_tab == "Simulator")):
             i1, i2, i3, i4, i5 = st.columns(5)
             with i1:
-                st.session_state.num_pods = st.number_input("Backend App Pods", min_value=1, max_value=16, value=int(st.session_state.num_pods), step=1)
+                st.session_state.num_pods = st.number_input("Backend App Pods", min_value=1, max_value=32, value=int(st.session_state.num_pods), step=1)
             with i2:
-                st.session_state.db_pool_size = st.number_input("DB Connection Pool", min_value=20, max_value=300, value=int(st.session_state.db_pool_size), step=10)
+                st.session_state.db_pool_size = st.number_input("DB Connection Pool", min_value=20, max_value=500, value=int(st.session_state.db_pool_size), step=10)
             with i3:
-                st.session_state.cache_hit_pct = st.slider("Redis Cache Hit %", min_value=0, max_value=95, value=int(st.session_state.cache_hit_pct), step=5)
+                st.session_state.cache_hit_pct = st.slider("Redis Cache Hit %", min_value=0, max_value=100, value=int(st.session_state.cache_hit_pct), step=5)
             with i4:
                 st.session_state.waiting_room = st.checkbox("Virtual Waiting Room 🚪", value=bool(st.session_state.waiting_room), help="Enables active traffic queueing above safe capacity threshold.")
             with i5:
@@ -664,10 +918,10 @@ def main() -> None:
 
         tel = synthesize_telemetry(
             scenario_name=st.session_state.selected_scenario,
-            users=st.session_state.user_demand,
-            num_pods=st.session_state.num_pods,
-            db_pool_size=st.session_state.db_pool_size,
-            cache_hit_ratio=st.session_state.cache_hit_pct / 100.0,
+            users=int(st.session_state.user_demand),
+            num_pods=int(st.session_state.num_pods),
+            db_pool_size=int(st.session_state.db_pool_size),
+            cache_hit_ratio=float(st.session_state.cache_hit_pct) / 100.0,
             waiting_room_enabled=st.session_state.waiting_room,
             degraded_mode=st.session_state.degraded_mode,
         )
@@ -712,11 +966,11 @@ def main() -> None:
 
         st.markdown(
             f"""
-<div style="background:{'#FEF2F2' if tel['risk_state'] == 'CRITICAL' else '#F8FAFC'};border:1px solid {'#FECACA' if tel['risk_state'] == 'CRITICAL' else '#E2E8F0'};border-radius:12px;padding:10px 16px;margin-bottom:18px;display:flex;justify-content:space-between;align-items:center;">
-  <div style="font-size:12.5px;color:#334155;">
+<div style="background:{'#FEF2F2' if tel['risk_state'] == 'CRITICAL' else '#F8FAFC'};border:1px solid {'#FECACA' if tel['risk_state'] == 'CRITICAL' else '#E2E8F0'};border-radius:12px;padding:12px 18px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;">
+  <div style="font-size:13.5px;color:#334155;">
     <b>Active Bottleneck Diagnostic:</b> {tel['bottleneck']}
   </div>
-  <div style="font-size:12px;color:#64748B;">
+  <div style="font-size:13px;color:#64748B;">
     Waiting Room Queue: <b style="color:{'#EF4444' if tel['queued_users'] > 0 else '#10B981'};">{tel['queued_users']:,} students</b> (Est. Wait: <b>{tel['wait_time_mins']} mins</b>)
   </div>
 </div>
@@ -732,14 +986,14 @@ def main() -> None:
   <div class="card-title">🌱 Traffic Simulator</div>
   <div class="card-subtitle">Realistic scenarios. Physically consistent telemetry.</div>
   <div style="margin-bottom:10px;">
-    <div style="font-size:11.5px;font-weight:700;color:#64748B;text-transform:uppercase;">Active Scenario: {st.session_state.selected_scenario}</div>
-    <div style="font-size:11.5px;color:#D97706;font-weight:600;margin-top:2px;">• {SCENARIOS[st.session_state.selected_scenario]['badge']}</div>
+    <div style="font-size:12px;font-weight:800;color:#64748B;text-transform:uppercase;">Active Scenario: {st.session_state.selected_scenario}</div>
+    <div style="font-size:12px;color:#D97706;font-weight:700;margin-top:2px;">• {SCENARIOS[st.session_state.selected_scenario]['badge']}</div>
   </div>
   <div style="display:flex;justify-content:center;margin:8px 0;">
     {'<img src="data:image/jpeg;base64,' + campus_b64 + '" style="width:100%;max-width:230px;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,0.04);">' if campus_b64 else ''}
   </div>
-  <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:8px 10px;font-size:11px;color:#475569;margin-top:8px;">
-    ℹ️ Multi-tier queuing: CDN ({tel['cdn_latency']}ms) + Pod CPU ({tel['app_latency']}ms) + DB Query ({tel['db_latency']}ms) + Network ({tel['net_latency']}ms).
+  <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:8px 10px;font-size:11.5px;color:#475569;margin-top:8px;">
+    ℹ️ Multi-tier breakdown: CDN ({tel['cdn_latency']}ms) + Pod CPU ({tel['app_latency']}ms) + DB Query ({tel['db_latency']}ms) + Network ({tel['net_latency']}ms).
   </div>
 </div>
                 """,
@@ -747,14 +1001,14 @@ def main() -> None:
             )
 
         with col_chart:
-            user_range = np.linspace(500, 16000, 45)
+            user_range = np.linspace(500, 20000, 45)
             lats = [
                 synthesize_telemetry(
                     st.session_state.selected_scenario,
                     int(u),
-                    st.session_state.num_pods,
-                    st.session_state.db_pool_size,
-                    st.session_state.cache_hit_pct / 100.0,
+                    int(st.session_state.num_pods),
+                    int(st.session_state.db_pool_size),
+                    float(st.session_state.cache_hit_pct) / 100.0,
                     st.session_state.waiting_room,
                     st.session_state.degraded_mode,
                 )["latency"]
@@ -764,9 +1018,9 @@ def main() -> None:
                 synthesize_telemetry(
                     st.session_state.selected_scenario,
                     int(u),
-                    st.session_state.num_pods,
-                    st.session_state.db_pool_size,
-                    st.session_state.cache_hit_pct / 100.0,
+                    int(st.session_state.num_pods),
+                    int(st.session_state.db_pool_size),
+                    float(st.session_state.cache_hit_pct) / 100.0,
                     st.session_state.waiting_room,
                     st.session_state.degraded_mode,
                 )["cpu"]
@@ -808,64 +1062,117 @@ def main() -> None:
             )
             st.plotly_chart(fig, use_container_width=True)
 
-    # -------------------------------------------------------------
-    # TAB: FACULTY STUDIO (Faculty & Admin)
-    # -------------------------------------------------------------
-    elif current_tab == "Faculty Studio":
-        st.markdown('<div class="main-card"><div class="card-title">👨‍🏫 Faculty Academic Studio</div><div class="card-subtitle">Manage departmental course rosters, enter/update semester grades, and view grade distributions.</div></div>', unsafe_allow_html=True)
+    # 2. TAB: CUSTOM STRESS LAB & MANUAL PARAMETER STUDIO (NEW)
+    elif current_tab == "Custom Stress Lab":
+        st.markdown('<div class="main-card"><div class="card-title">🧪 Custom Stress Lab & Manual Parameter Studio</div><div class="card-subtitle">Type custom numerical ranges, inject chaos faults, and stress-test multi-tier saturation boundaries in real time.</div></div>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
-        f_col1, f_col2 = st.columns([1.1, 1.9])
-        with f_col1:
-            st.subheader("📝 Grade Submission & Publishing")
-            with st.form("faculty_grade_form"):
-                f_enroll = st.text_input("Student Enrollment No*", value="2024CS1001").strip().upper()
-                f_sem = st.selectbox("Semester*", options=list(range(1, 9)), index=0)
-                f_sub = st.text_input("Subject Code*", value="CS501-1", placeholder="e.g. CS501-1, IT501-1")
-                f_grade = st.selectbox("Assign Grade*", options=["O (10.0)", "A+ (9.0)", "A (8.0)", "B+ (7.0)", "B (6.0)", "F (0.0)"], index=1)
-                
-                grade_map = {"O (10.0)": ("O", 10.0), "A+ (9.0)": ("A+", 9.0), "A (8.0)": ("A", 8.0), "B+ (7.0)": ("B+", 7.0), "B (6.0)": ("B", 6.0), "F (0.0)": ("F", 0.0)}
-                
-                publish_btn = st.form_submit_button("📤 Publish Grade Update", type="primary", use_container_width=True)
-                if publish_btn:
-                    g_letter, g_pts = grade_map[f_grade]
-                    ok, msg = update_student_grade(f_enroll, f_sem, f_sub, g_letter, g_pts)
-                    if ok:
-                        st.success(msg)
-                    else:
-                        st.error(msg)
+        lab_c1, lab_c2, lab_c3, lab_c4 = st.columns(4)
+        with lab_c1:
+            custom_users = st.number_input("1. Custom Demand (Users)", min_value=100, max_value=60000, value=12500, step=500)
+            custom_pods = st.number_input("2. App Pod Cluster (Instances)", min_value=1, max_value=64, value=6, step=1)
+        with lab_c2:
+            custom_db_pool = st.number_input("3. DB Connection Pool (Conns)", min_value=10, max_value=1000, value=150, step=10)
+            custom_cache = st.number_input("4. Redis Cache Hit Ratio (%)", min_value=0, max_value=100, value=80, step=5)
+        with lab_c3:
+            custom_sla_lat = st.number_input("5. SLA Latency Budget (ms)", min_value=100.0, max_value=5000.0, value=800.0, step=50.0)
+            custom_sla_cpu = st.number_input("6. SLA Target CPU (%)", min_value=30.0, max_value=99.0, value=85.0, step=5.0)
+        with lab_c4:
+            st.markdown("<b>7. Fault Injection Toggles</b>", unsafe_allow_html=True)
+            f_db = st.checkbox("🗄️ DB Lock Contention (3x)", value=st.session_state.db_lock_surge)
+            f_net = st.checkbox("🌐 Network Packet Loss (+150ms)", value=st.session_state.net_loss_spike)
+            f_mem = st.checkbox("💾 Memory Pressure Surge (+30%)", value=st.session_state.mem_pressure)
+            st.session_state.db_lock_surge = f_db
+            st.session_state.net_loss_spike = f_net
+            st.session_state.mem_pressure = f_mem
 
-        with f_col2:
-            st.subheader("📋 Departmental Student Roster")
-            dept_select = st.selectbox(
-                "Filter by Department",
-                options=[
-                    "Computer Science & Engineering",
-                    "Information Technology",
-                    "Electronics & Communication",
-                    "Mechanical Engineering",
-                    "Electrical Engineering",
-                ],
-            )
-            dept_students = get_students_by_department(dept_select)
-            if dept_students:
-                df_dept = pd.DataFrame(dept_students)[["enrollment_no", "name", "year", "semester", "cgpa", "status"]]
-                st.dataframe(df_dept, use_container_width=True, hide_index=True)
+        # Compute Custom Lab Telemetry
+        custom_tel = synthesize_telemetry(
+            scenario_name="Result Declaration Rush",
+            users=int(custom_users),
+            num_pods=int(custom_pods),
+            db_pool_size=int(custom_db_pool),
+            cache_hit_ratio=float(custom_cache) / 100.0,
+            waiting_room_enabled=st.session_state.waiting_room,
+            degraded_mode=st.session_state.degraded_mode,
+            db_lock_surge=f_db,
+            net_loss_spike=f_net,
+            mem_pressure=f_mem,
+            sla_latency=float(custom_sla_lat),
+            sla_cpu=float(custom_sla_cpu),
+        )
+
+        st.markdown("---")
+        st.markdown("##### 📊 Custom Stress Lab Output Telemetry")
+
+        l1, l2, l3, l4, l5, l6 = st.columns(6)
+        l1.metric("Simulated Demand", f"{custom_tel['users']:,} users", f"{custom_tel['rps']:,.0f} RPS")
+        l2.metric("Safe Capacity", f"{custom_tel['safe_capacity']:,.0f} users", f"Knee: {custom_tel['knee']:,}")
+        l3.metric("System Utilization", f"{custom_tel['utilization']:.1f}%", f"Headroom: {custom_tel['headroom']}")
+        l4.metric("P95 Latency", f"{custom_tel['latency']:.0f} ms", f"Budget: {custom_sla_lat:.0f} ms")
+        l5.metric("CPU Utilization", f"{custom_tel['cpu']:.1f}%", f"DB Pool: {custom_tel['db_pool_util']:.0f}%")
+        l6.metric("Student Redirect Risk", f"{custom_tel['redirect_risk']}%", custom_tel["risk_state"])
+
+        st.markdown(
+            f"""
+<div style="background:{'#FEF2F2' if custom_tel['risk_state'] == 'CRITICAL' else '#F0FDF4'};border:1px solid {'#FECACA' if custom_tel['risk_state'] == 'CRITICAL' else '#BBF7D0'};border-radius:14px;padding:16px;margin-top:14px;">
+  <div style="font-size:14px;font-weight:900;color:{custom_tel['risk_color']};">{custom_tel['action_title']}</div>
+  <div style="font-size:13px;color:#334155;margin-top:4px;"><b>Root Bottleneck:</b> {custom_tel['bottleneck']} &nbsp;|&nbsp; {custom_tel['action_desc']}</div>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # 3. TAB: ALL ACCOUNTS DIRECTORY
+    elif current_tab == "All Accounts Directory":
+        st.markdown('<div class="main-card"><div class="card-title">👥 All Accounts Management Directory</div><div class="card-subtitle">Master oversight of Students, Faculty, and Admin accounts stored on disk.</div></div>', unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        acc_tab1, acc_tab2, acc_tab3 = st.tabs(["🎓 Students Directory", "👨‍🏫 Faculty Directory", "🛡️ Master Admin Credentials"])
+
+        with acc_tab1:
+            st.markdown("##### Registered Students Directory")
+            search_box = st.text_input("Search student by name, enrollment or course", placeholder="Type name or enrollment...")
+            students_list = get_all_students(limit=100, search_query=search_box)
+            if students_list:
+                df_students = pd.DataFrame(students_list)[["enrollment_no", "name", "email", "department", "year", "semester", "cgpa", "status"]]
+                st.dataframe(df_students, use_container_width=True, hide_index=True)
             else:
-                st.info("No students found in this department.")
+                st.info("No student records found.")
 
-    # -------------------------------------------------------------
-    # TAB: STUDENT PORTAL & REAL DB (All Roles)
-    # -------------------------------------------------------------
+            if st.button("🌱 Bulk Seed 100 Sample Students"):
+                with st.spinner("Seeding database..."):
+                    seeded = seed_sample_students(count=100)
+                    st.success(f"Seeded {seeded} students successfully!")
+                    st.rerun()
+
+        with acc_tab2:
+            st.markdown("##### Faculty Directory")
+            faculty_list = get_all_faculty()
+            if faculty_list:
+                df_fac = pd.DataFrame(faculty_list)[["faculty_id", "name", "email", "department", "designation", "courses_taught"]]
+                st.dataframe(df_fac, use_container_width=True, hide_index=True)
+            else:
+                st.info("No faculty records found.")
+
+        with acc_tab3:
+            st.markdown("##### 🔐 Master Quantum Keys")
+            q_df = pd.DataFrame([
+                {"Role": "Master Admin (You)", "Quantum Key": QUANTUM_KEYS["admin"], "Security": "256-Bit Symmetric Entropy", "Permissions": "Unrestricted Full Access"},
+                {"Role": "Faculty Member", "Quantum Key": QUANTUM_KEYS["faculty"], "Security": "256-Bit Symmetric Entropy", "Permissions": "Departmental Student Rosters & Grade Publishing"},
+                {"Role": "Student Persona", "Quantum Key": QUANTUM_KEYS["student"], "Security": "256-Bit Symmetric Entropy", "Permissions": "Personal Transcript & Session Health"},
+            ])
+            st.dataframe(q_df, use_container_width=True, hide_index=True)
+
+    # 4. TAB: STUDENT PORTAL & DB (Admin View)
     elif current_tab == "Student Portal & DB":
         st.markdown('<div class="main-card"><div class="card-title">🎓 Student Portal & Real Database Terminal</div><div class="card-subtitle">Query real student records, semester grade cards, and measure cold SQLite vs Redis caching latency.</div></div>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
         col_left, col_right = st.columns([1.2, 1.8])
-
         with col_left:
             st.subheader("🔍 Student Result Lookup")
-            lookup_enrollment = st.text_input("Enter Student Enrollment No", value="2024CS1001", help="e.g. 2024CS1001, 2023IT1005, etc.").strip().upper()
+            lookup_enrollment = st.text_input("Enter Student Enrollment No", value="2024CS1001").strip().upper()
             bypass = st.checkbox("Bypass Redis Cache (Force Cold Database Read)", value=False)
 
             if st.button("🚀 Query Student Results", type="primary", use_container_width=True):
@@ -912,113 +1219,41 @@ def main() -> None:
                         b_col2.metric("Redis Cache Avg Latency", f"{bench['cached_avg_ms']} ms", f"P95: {bench['cached_p95_ms']} ms")
 
         with col_right:
-            if current_role == "admin":
-                st.subheader("📝 Register New Student")
-                with st.form("new_student_form", clear_on_submit=True):
-                    n_col1, n_col2 = st.columns(2)
-                    with n_col1:
-                        new_enrollment = st.text_input("Enrollment Number*", placeholder="e.g. 2024CS1099")
-                        new_name = st.text_input("Full Name*", placeholder="e.g. Ananya Roy")
-                        new_email = st.text_input("Email Address*", placeholder="ananya.roy@iem.edu.in")
-                    with n_col2:
-                        new_dept = st.selectbox(
-                            "Department / Course*",
-                            options=[
-                                "Computer Science & Engineering",
-                                "Information Technology",
-                                "Electronics & Communication",
-                                "Mechanical Engineering",
-                                "Electrical Engineering",
-                            ],
-                        )
-                        new_year = st.selectbox("Year*", options=[1, 2, 3, 4], index=1)
-                        new_sem = st.selectbox("Current Semester*", options=list(range(1, 9)), index=3)
-                        new_cgpa = st.number_input("CGPA*", min_value=0.0, max_value=10.0, value=8.5, step=0.1)
+            st.subheader("📝 Register New Student")
+            with st.form("new_student_form", clear_on_submit=True):
+                n_col1, n_col2 = st.columns(2)
+                with n_col1:
+                    new_enrollment = st.text_input("Enrollment Number*", placeholder="e.g. 2024CS1099")
+                    new_name = st.text_input("Full Name*", placeholder="e.g. Ananya Roy")
+                    new_email = st.text_input("Email Address*", placeholder="ananya.roy@iem.edu.in")
+                with n_col2:
+                    new_dept = st.selectbox("Department*", options=["Computer Science & Engineering", "Information Technology", "Electronics & Communication", "Mechanical Engineering", "Electrical Engineering"])
+                    new_year = st.selectbox("Year*", options=[1, 2, 3, 4], index=1)
+                    new_sem = st.selectbox("Semester*", options=list(range(1, 9)), index=3)
+                    new_cgpa = st.number_input("CGPA*", min_value=0.0, max_value=10.0, value=8.5, step=0.1)
 
-                    submit_student = st.form_submit_button("➕ Save Student to Database", type="primary", use_container_width=True)
-                    if submit_student:
-                        if not new_enrollment or not new_name or not new_email:
-                            st.error("Please fill in all required fields.")
+                submit_student = st.form_submit_button("➕ Save Student to Database", type="primary", use_container_width=True)
+                if submit_student:
+                    if not new_enrollment or not new_name or not new_email:
+                        st.error("Please fill in all required fields.")
+                    else:
+                        ok, msg = add_student(new_enrollment, new_name, new_email, new_dept, new_year, new_sem, new_cgpa)
+                        if ok:
+                            st.success(msg)
                         else:
-                            ok, msg = add_student(
-                                enrollment_no=new_enrollment,
-                                name=new_name,
-                                email=new_email,
-                                department=new_dept,
-                                year=new_year,
-                                semester=new_sem,
-                                cgpa=new_cgpa,
-                            )
-                            if ok:
-                                st.success(msg)
-                            else:
-                                st.error(msg)
+                            st.error(msg)
 
-                st.markdown("---")
-                st.subheader("📋 Registered Students Directory")
-                search_box = st.text_input("Search student by name, enrollment or course", placeholder="Type name or enrollment...")
-                students_list = get_all_students(limit=50, search_query=search_box)
-                if students_list:
-                    df_students = pd.DataFrame(students_list)[["enrollment_no", "name", "department", "year", "semester", "cgpa", "status"]]
-                    st.dataframe(df_students, use_container_width=True, hide_index=True)
-                else:
-                    st.info("No student records found.")
-
-                if st.button("🌱 Seed 100 Demo Students & Semester Records"):
-                    with st.spinner("Seeding database..."):
-                        seeded = seed_sample_students(count=100)
-                        st.success(f"Seeded {seeded} students and academic results successfully!")
-                        st.rerun()
-            else:
-                st.info("ℹ️ Student and Faculty accounts have scoped read-only directory access.")
-
-    # -------------------------------------------------------------
-    # TAB: WEEK 2.5 ARCHITECTURE & FUTURE SCOPE
-    # -------------------------------------------------------------
-    elif current_tab == "Week 2.5 Architecture":
-        st.markdown('<div class="main-card"><div class="card-title">⚡ Week 2.5 Milestone: Real Persistence, Quantum-Entropy Keys & 10k User Load Architecture</div><div class="card-subtitle">Technical blueprint for Role-Based Access Control and Non-DDoS High-Concurrency Swarming</div></div>', unsafe_allow_html=True)
+    # 5. TAB: FACULTY STUDIO (Admin View)
+    elif current_tab == "Faculty Studio":
+        st.markdown('<div class="main-card"><div class="card-title">👨‍🏫 Faculty Academic Studio</div><div class="card-subtitle">Manage departmental course rosters, enter/update semester grades, and view grade distributions.</div></div>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
-        w1, w2 = st.columns(2)
-        with w1:
-            st.markdown(
-                """
-<div class="main-card">
-  <div class="card-title">🔐 3-Role Quantum Key Authentication</div>
-  <div style="font-size:12.5px;color:#334155;line-height:1.65;margin-top:10px;">
-    <div>• <b>Master Admin (You):</b> <code>ADM-QKEY-7F9A2B81C3D4</code> — Full telemetry, live simulator, global student database & control triggers.</div>
-    <div style="margin-top:8px;">• <b>Faculty Persona:</b> <code>FAC-QKEY-5E6C1D94A8B2</code> — Departmental roster, subject grade submission, and performance curves.</div>
-    <div style="margin-top:8px;">• <b>Student Persona:</b> <code>STU-QKEY-3B8A7F1C9E20</code> — Scoped personal transcript and fast sub-millisecond cached queries.</div>
-    <div style="background:#ECFDF5;padding:10px;border-radius:10px;margin-top:12px;color:#065F46;font-size:11.5px;">
-      🛡️ <b>Post-Quantum Security:</b> 256-bit symmetric entropy with SHA-512 constant-time verification is provably immune to Shor's and Grover's quantum algorithms.
-    </div>
-  </div>
-</div>
-                """,
-                unsafe_allow_html=True,
-            )
+        dept_select = st.selectbox("Select Department Roster", options=["Computer Science & Engineering", "Information Technology", "Electronics & Communication", "Mechanical Engineering", "Electrical Engineering"])
+        dept_students = get_students_by_department(dept_select)
+        if dept_students:
+            st.dataframe(pd.DataFrame(dept_students)[["enrollment_no", "name", "year", "semester", "cgpa", "status"]], use_container_width=True, hide_index=True)
 
-        with w2:
-            st.markdown(
-                """
-<div class="main-card">
-  <div class="card-title">🚀 Future Scope: 10,000 Virtual User Load Swarm</div>
-  <div style="font-size:12.5px;color:#334155;line-height:1.65;margin-top:10px;">
-    <div>• <b>No Physical Laptops Needed:</b> A single Locust / asyncio worker node manages 10,000 non-blocking HTTP/2 asynchronous virtual user (VU) sessions.</div>
-    <div style="margin-top:8px;">• <b>Authentic Student Personas:</b> Bots pull real enrollment IDs from SQLite, log in, receive session tokens, and request grades with 2-5s human pacing.</div>
-    <div style="margin-top:8px;">• <b>Legitimate Load Test vs DDoS:</b> Valid Layer 7 authenticated sessions testing DB connection pool starvation and lock contention without destructive L3/L4 network flooding.</div>
-    <div style="background:#EFF6FF;padding:10px;border-radius:10px;margin-top:12px;color:#1E40AF;font-size:11.5px;">
-      📈 <b>Recommended Stack:</b> Locust (Python) / k6 (Go) + PgBouncer Connection Pooler + Redis ZSET Virtual Waiting Room.
-    </div>
-  </div>
-</div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    # -------------------------------------------------------------
-    # TAB: TELEMETRY
-    # -------------------------------------------------------------
+    # 6. TAB: TELEMETRY
     elif current_tab == "Telemetry":
         st.markdown('<div class="main-card"><div class="card-title">📊 Real-Time Server Telemetry & Queuing Analysis</div><div class="card-subtitle">Detailed breakdown of CPU, RAM, Network, DB Connection Pool and Latency Saturation</div></div>', unsafe_allow_html=True)
         m1, m2, m3, m4 = st.columns(4)
@@ -1038,48 +1273,22 @@ def main() -> None:
         fig_bar.update_layout(showlegend=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#FFFFFF")
         st.plotly_chart(fig_bar, use_container_width=True)
 
-    # -------------------------------------------------------------
-    # TAB: MODELS
-    # -------------------------------------------------------------
-    elif current_tab == "Models":
-        st.markdown('<div class="main-card"><div class="card-title">⚙️ Deep Learning Architecture (PyTorch Multi-Output MLP)</div><div class="card-subtitle">He Normal Init, BatchNorm1d, Dropout(0.15), and Multi-Head Regression</div></div>', unsafe_allow_html=True)
+    # 7. TAB: DEEP LEARNING MODELS (Admin Exclusive)
+    elif current_tab == "Models (ML)":
+        st.markdown('<div class="main-card"><div class="card-title">⚙️ Deep Learning Architecture (PyTorch Multi-Output MLP)</div><div class="card-subtitle">Exclusive Master Admin view of Neural Network weights, initialization, and gradient flow.</div></div>', unsafe_allow_html=True)
         st.json({
             "in_features": 6,
             "hidden_dims": [128, 64, 32],
             "out_features": 3,
-            "techniques": ["He Normal Init", "BatchNorm1d", "Dropout(0.15)", "L2 Weight Decay(1e-4)"],
-            "targets": ["cpu_usage", "latency_ms", "safe_capacity"]
+            "techniques": ["He Normal Init (Ratio 0.88)", "BatchNorm1d (eps=1e-5)", "Dropout(0.15)", "L2 Weight Decay(1e-4)"],
+            "targets": ["cpu_usage", "latency_ms", "safe_capacity"],
+            "optimizer": "AdamW (lr=0.001, beta=(0.9, 0.999))",
+            "loss_function": "Multi-Task MSE with Dynamic Loss Weighting"
         })
 
-    # -------------------------------------------------------------
-    # TAB: SCENARIOS
-    # -------------------------------------------------------------
-    elif current_tab == "Scenarios":
-        st.markdown('<div class="main-card"><div class="card-title">📅 Academic Operational Scenarios</div><div class="card-subtitle">Calibrated Workload Profiles</div></div>', unsafe_allow_html=True)
-        st.dataframe(pd.DataFrame(SCENARIOS).T, use_container_width=True)
-
-    # -------------------------------------------------------------
-    # TAB: INSIGHTS
-    # -------------------------------------------------------------
-    elif current_tab == "Insights":
-        st.markdown(
-            """
-<div class="main-card">
-  <div class="card-title">📈 Architectural Positioning: PortalPulse vs Cloudflare</div>
-  <div style="font-size:13px;color:#334155;line-height:1.6;margin-top:10px;">
-    <div>• <b>Edge CDN (Cloudflare):</b> Mitigates L3/L4 DDoS attacks, caches static assets (CSS/JS/images), but is blind to internal ERP database query queues, transaction locks, and relational table joins.</div>
-    <div style="margin-top:8px;">• <b>PortalPulse Application Layer:</b> Monitors server telemetry (CPU, RAM, M/M/1 latency knee), forecasts database pool starvation minutes in advance, and enforces token-bucket admission and priority queues before the backend database crashes.</div>
-  </div>
-</div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # -------------------------------------------------------------
-    # TAB: BENCHMARKS
-    # -------------------------------------------------------------
-    elif current_tab == "Benchmarks":
-        st.markdown('<div class="main-card"><div class="card-title">🏆 5-Model Architecture Selection Benchmark</div><div class="card-subtitle">Empirical evaluation on held-out test split</div></div>', unsafe_allow_html=True)
+    # 8. TAB: BENCHMARKS (Admin Exclusive)
+    elif current_tab == "Benchmarks (ML)":
+        st.markdown('<div class="main-card"><div class="card-title">🏆 5-Model Architecture Selection Benchmark Suite</div><div class="card-subtitle">Empirical evaluation on held-out test split (28,720 train / 6,559 test records)</div></div>', unsafe_allow_html=True)
         comp_df = pd.DataFrame([
             {"Model": "XGBoost", "Family": "Gradient Boosted Trees", "Test MAE": 131.3, "Test R²": 0.913, "Inference (ms)": 0.012, "Role": "Selected Tabular Champion"},
             {"Model": "LightGBM", "Family": "Histogram GBDT", "Test MAE": 134.1, "Test R²": 0.910, "Inference (ms)": 0.008, "Role": "Fast Edge Microservice Candidate"},
@@ -1089,9 +1298,26 @@ def main() -> None:
         ])
         st.dataframe(comp_df, use_container_width=True, hide_index=True)
 
-    # -------------------------------------------------------------
-    # TAB: REPORTS
-    # -------------------------------------------------------------
+    # 9. TAB: ARCHITECTURAL INSIGHTS
+    elif current_tab == "Insights":
+        st.markdown(
+            """
+<div class="main-card">
+  <div class="card-title">📈 Architectural Positioning: PortalPulse vs Cloudflare</div>
+  <div style="font-size:13.5px;color:#334155;line-height:1.65;margin-top:10px;">
+    <div>• <b>Edge CDN (Cloudflare):</b> Mitigates L3/L4 DDoS attacks, caches static assets (CSS/JS/images), but is blind to internal ERP database query queues, transaction locks, and relational table joins.</div>
+    <div style="margin-top:10px;">• <b>PortalPulse Application Layer:</b> Monitors server telemetry (CPU, RAM, M/M/1 latency knee), forecasts database pool starvation minutes in advance, and enforces token-bucket admission and priority queues before the backend database crashes.</div>
+  </div>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # 10. TAB: WEEK 2.5 ARCHITECTURE
+    elif current_tab == "Week 2.5 Architecture":
+        render_week25_tab()
+
+    # 11. TAB: REPORTS
     elif current_tab == "Reports":
         st.markdown('<div class="main-card"><div class="card-title">📄 Training, Validation & Query Audit Reports</div><div class="card-subtitle">Formal Gradient Flow Audit & Real DB Query Audit Logs</div></div>', unsafe_allow_html=True)
         st.json({
@@ -1103,10 +1329,7 @@ def main() -> None:
         logs = get_query_logs(limit=20)
         if logs:
             st.dataframe(pd.DataFrame(logs), use_container_width=True, hide_index=True)
-        else:
-            st.info("No query logs recorded yet. Query some student records to generate logs.")
 
-    # Footer
     st.markdown(
         """
 <div class="footer-text">
@@ -1115,6 +1338,48 @@ def main() -> None:
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_week25_tab() -> None:
+    st.markdown('<div class="main-card"><div class="card-title">⚡ Week 2.5 Milestone: Real Persistence, Quantum Keys & 10k User Load Architecture</div><div class="card-subtitle">Technical blueprint for Role-Based Access Control and Non-DDoS High-Concurrency Swarming</div></div>', unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    w1, w2 = st.columns(2)
+    with w1:
+        st.markdown(
+            """
+<div class="main-card">
+  <div class="card-title">🔐 3-Role Quantum Key Authentication</div>
+  <div style="font-size:13px;color:#334155;line-height:1.7;margin-top:10px;">
+    <div>• <b>Master Admin (You):</b> <code>ADM-QKEY-7F9A2B81C3D4</code> — Full telemetry, ML model suite, custom parameter lab, all accounts & control triggers.</div>
+    <div style="margin-top:8px;">• <b>Faculty Persona:</b> <code>FAC-QKEY-5E6C1D94A8B2</code> — Departmental roster, subject grade submission, and AI traffic forecast.</div>
+    <div style="margin-top:8px;">• <b>Student Persona:</b> <code>STU-QKEY-3B8A7F1C9E20</code> — Scoped personal transcript, sub-millisecond cached queries, and session redirect risk meter.</div>
+    <div style="background:#ECFDF5;padding:12px;border-radius:12px;margin-top:14px;color:#065F46;font-size:12px;">
+      🛡️ <b>Post-Quantum Security:</b> 256-bit symmetric entropy with SHA-512 constant-time verification is provably immune to Shor's and Grover's quantum algorithms.
+    </div>
+  </div>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with w2:
+        st.markdown(
+            """
+<div class="main-card">
+  <div class="card-title">🚀 Future Scope: 10,000 Virtual User Load Swarm</div>
+  <div style="font-size:13px;color:#334155;line-height:1.7;margin-top:10px;">
+    <div>• <b>No Physical Laptops Needed:</b> A single Locust / asyncio worker node manages 10,000 non-blocking HTTP/2 asynchronous virtual user (VU) sessions.</div>
+    <div style="margin-top:8px;">• <b>Authentic Student Personas:</b> Bots pull real enrollment IDs from SQLite, log in, receive session tokens, and request grades with 2-5s human pacing.</div>
+    <div style="margin-top:8px;">• <b>Legitimate Load Test vs DDoS:</b> Valid Layer 7 authenticated sessions testing DB connection pool starvation and lock contention without destructive L3/L4 network flooding.</div>
+    <div style="background:#EFF6FF;padding:12px;border-radius:12px;margin-top:14px;color:#1E40AF;font-size:12px;">
+      📈 <b>Recommended Stack:</b> Locust (Python) / k6 (Go) + PgBouncer Connection Pooler + Redis ZSET Virtual Waiting Room.
+    </div>
+  </div>
+</div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 if __name__ == "__main__":

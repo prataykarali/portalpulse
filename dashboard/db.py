@@ -1,8 +1,7 @@
 """PortalPulse Database & Hybrid Redis Caching Layer with 3-Role Quantum Access Keys.
 
 Provides SQLite persistence with WAL mode for student records, academic results,
-and query audit logs, coupled with a Redis caching layer (with in-memory LRU/TTL fallback),
-and quantum-entropy key authentication for Student, Faculty, and Admin personas.
+faculty directory, and query audit logs, coupled with a Redis caching layer.
 """
 
 from __future__ import annotations
@@ -32,24 +31,21 @@ def validate_quantum_key(key_input: str) -> Optional[str]:
     """Validates quantum access token and returns the authenticated role."""
     key_input = key_input.strip()
     for role, key in QUANTUM_KEYS.items():
-        # Constant-time comparison to prevent side-channel timing attacks
         if hmac.compare_digest(key_input, key):
             return role
     return None
 
 
-# Hybrid Redis / In-Memory Cache Implementation
 class HybridRedisCache:
     """Thread-safe Redis cache client with automatic in-memory fallback."""
 
     def __init__(self) -> None:
         self.stats = {"hits": 0, "misses": 0, "sets": 0}
         self._memory_store: Dict[str, Tuple[Any, float]] = {}
-        self._max_entries = 2000
+        self._max_entries = 3000
         self.redis_client = None
         self.backend = "In-Memory LRU Cache (TTL Enabled)"
 
-        # Attempt to connect to remote Redis if redis-py is available
         redis_host = os.getenv("REDIS_HOST", "localhost")
         redis_port = int(os.getenv("REDIS_PORT", "6379"))
         redis_password = os.getenv("REDIS_PASSWORD", None)
@@ -72,7 +68,6 @@ class HybridRedisCache:
             self.backend = "In-Memory Microsecond Cache (Local Standalone)"
 
     def get(self, key: str) -> Optional[Any]:
-        """Fetch item from cache. Returns None on cache miss or expiration."""
         if self.redis_client:
             try:
                 import json
@@ -84,7 +79,7 @@ class HybridRedisCache:
                 self.stats["misses"] += 1
                 return None
             except Exception:
-                pass  # Fall back to in-memory
+                pass
 
         now = time.time()
         if key in self._memory_store:
@@ -99,7 +94,6 @@ class HybridRedisCache:
         return None
 
     def set(self, key: str, value: Any, ttl_seconds: int = 300) -> None:
-        """Store item in cache with TTL."""
         self.stats["sets"] += 1
         if self.redis_client:
             try:
@@ -110,7 +104,6 @@ class HybridRedisCache:
             except Exception:
                 pass
 
-        # Evict oldest if limit reached
         if len(self._memory_store) >= self._max_entries:
             oldest_key = next(iter(self._memory_store))
             del self._memory_store[oldest_key]
@@ -148,12 +141,10 @@ class HybridRedisCache:
         }
 
 
-# Global Cache Instance
 CACHE = HybridRedisCache()
 
 
 def get_db_connection() -> sqlite3.Connection:
-    """Creates a configured SQLite database connection with WAL mode enabled."""
     conn = sqlite3.connect(str(DB_PATH), timeout=10.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
@@ -163,7 +154,6 @@ def get_db_connection() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    """Initialize database tables and performance indexes."""
     conn = get_db_connection()
     with conn:
         conn.executescript(
@@ -178,6 +168,17 @@ def init_db() -> None:
                 semester INTEGER NOT NULL,
                 cgpa REAL NOT NULL,
                 status VARCHAR(20) DEFAULT 'ACTIVE',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE IF NOT EXISTS faculty (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                faculty_id VARCHAR(32) UNIQUE NOT NULL,
+                name VARCHAR(128) NOT NULL,
+                email VARCHAR(128) UNIQUE NOT NULL,
+                department VARCHAR(64) NOT NULL,
+                designation VARCHAR(64) NOT NULL,
+                courses_taught VARCHAR(256) NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
 
@@ -204,13 +205,14 @@ def init_db() -> None:
             );
 
             CREATE INDEX IF NOT EXISTS idx_students_enrollment ON students(enrollment_no);
+            CREATE INDEX IF NOT EXISTS idx_faculty_id ON faculty(faculty_id);
             CREATE INDEX IF NOT EXISTS idx_results_student_id ON academic_results(student_id);
             CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON query_audit_logs(timestamp);
             """
         )
     conn.close()
 
-    # Automatically seed sample students if table is empty
+    seed_sample_faculty_if_empty()
     stats = get_db_stats()
     if stats["student_count"] == 0:
         seed_sample_students(count=250)
@@ -258,6 +260,31 @@ GRADE_SCALE = [
 ]
 
 
+def seed_sample_faculty_if_empty() -> None:
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM faculty;")
+        if cursor.fetchone()[0] == 0:
+            sample_fac = [
+                ("FAC-CSE-101", "Dr. Sayan Mukherjee", "sayan.m@iem.edu.in", "Computer Science & Engineering", "Professor & Head", "CS501, CS505"),
+                ("FAC-CSE-102", "Prof. Sharmistha Roy", "sharmistha.r@iem.edu.in", "Computer Science & Engineering", "Associate Professor", "CS502, CS503"),
+                ("FAC-IT-101", "Dr. Arindam Ghosh", "arindam.g@iem.edu.in", "Information Technology", "Professor", "IT501, IT504"),
+                ("FAC-ECE-101", "Dr. Debasis Banerjee", "debasis.b@iem.edu.in", "Electronics & Communication", "Professor", "EC501, EC503"),
+                ("FAC-ME-101", "Prof. Rakesh Verma", "rakesh.v@iem.edu.in", "Mechanical Engineering", "Assistant Professor", "ME501, ME502"),
+            ]
+            cursor.executemany(
+                """
+                INSERT INTO faculty (faculty_id, name, email, department, designation, courses_taught)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                sample_fac,
+            )
+            conn.commit()
+    finally:
+        conn.close()
+
+
 def add_student(
     enrollment_no: str,
     name: str,
@@ -268,7 +295,6 @@ def add_student(
     cgpa: float,
     status: str = "ACTIVE",
 ) -> Tuple[bool, str]:
-    """Adds a new student and generates academic results."""
     conn = get_db_connection()
     try:
         with conn:
@@ -321,7 +347,6 @@ def update_student_grade(
     new_grade: str,
     new_points: float,
 ) -> Tuple[bool, str]:
-    """Faculty utility to update or publish course grade for a student."""
     enrollment_no = enrollment_no.strip().upper()
     conn = get_db_connection()
     try:
@@ -347,7 +372,6 @@ def update_student_grade(
             if cursor.rowcount == 0:
                 return False, f"No matching result record found for Subject {subject_code} in Semester {semester}."
 
-        # Invalidate cache so student sees updated result instantly
         CACHE.delete(f"results:{enrollment_no}")
         return True, f"Grade updated to {new_grade} ({new_points}) for {student_name} ({subject_code})."
     except Exception as e:
@@ -357,7 +381,6 @@ def update_student_grade(
 
 
 def seed_sample_students(count: int = 200) -> int:
-    """Bulk seed realistic student records and results."""
     first_names = [
         "Aarav", "Vivaan", "Aditya", "Vihaan", "Arjun", "Sai", "Reyansh", "Ayaan", "Krishna", "Ishaan",
         "Ananya", "Diya", "Isha", "Riya", "Aadhya", "Saanvi", "Kiara", "Myra", "Pari", "Navya",
@@ -426,8 +449,7 @@ def seed_sample_students(count: int = 200) -> int:
     return inserted
 
 
-def get_all_students(limit: int = 150, search_query: Optional[str] = None) -> List[Dict[str, Any]]:
-    """Retrieve students list with optional search filtering."""
+def get_all_students(limit: int = 200, search_query: Optional[str] = None) -> List[Dict[str, Any]]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -457,10 +479,19 @@ def get_all_students(limit: int = 150, search_query: Optional[str] = None) -> Li
         conn.close()
 
 
+def get_all_faculty() -> List[Dict[str, Any]]:
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, faculty_id, name, email, department, designation, courses_taught, created_at FROM faculty ORDER BY id ASC;")
+        return [dict(r) for r in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
 def get_students_by_department(
     department: str, semester: Optional[int] = None
 ) -> List[Dict[str, Any]]:
-    """Faculty query to list students enrolled in a department/semester."""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -492,10 +523,6 @@ def get_students_by_department(
 def get_student_results(
     enrollment_no: str, bypass_cache: bool = False
 ) -> Dict[str, Any]:
-    """
-    Fetch student profile and academic results with Redis Caching and audit logging.
-    Measures exact query execution time in milliseconds.
-    """
     enrollment_no = enrollment_no.strip().upper()
     cache_key = f"results:{enrollment_no}"
 
@@ -558,7 +585,6 @@ def get_student_results(
             "cache_hit": False,
         }
 
-        # Store in Redis Cache with 120s TTL
         CACHE.set(cache_key, response, ttl_seconds=120)
         return response
     finally:
@@ -568,7 +594,6 @@ def get_student_results(
 def log_query_audit(
     enrollment_no: str, query_type: str, duration_ms: float, cache_hit: bool
 ) -> None:
-    """Record query performance audit log in database."""
     try:
         conn = get_db_connection()
         with conn:
@@ -585,7 +610,6 @@ def log_query_audit(
 
 
 def get_query_logs(limit: int = 15) -> List[Dict[str, Any]]:
-    """Retrieve recent query audit logs."""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -603,12 +627,14 @@ def get_query_logs(limit: int = 15) -> List[Dict[str, Any]]:
 
 
 def get_db_stats() -> Dict[str, Any]:
-    """Retrieve database disk footprint, row counts, and cache health."""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM students;")
         student_count = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM faculty;")
+        faculty_count = cursor.fetchone()[0]
 
         cursor.execute("SELECT COUNT(*) FROM academic_results;")
         result_count = cursor.fetchone()[0]
@@ -622,6 +648,7 @@ def get_db_stats() -> Dict[str, Any]:
 
         return {
             "student_count": student_count,
+            "faculty_count": faculty_count,
             "result_count": result_count,
             "audit_count": audit_count,
             "db_size_kb": db_size_kb,
@@ -633,10 +660,6 @@ def get_db_stats() -> Dict[str, Any]:
 
 
 def run_db_stress_benchmark(num_queries: int = 60) -> Dict[str, Any]:
-    """
-    Runs an empirical database load test measuring cold DB reads vs Redis cache reads.
-    Returns latency distributions and throughput metrics.
-    """
     students = get_all_students(limit=30)
     if not students:
         return {"error": "No students available to benchmark. Seed the database first."}
