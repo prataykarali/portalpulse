@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  portalpulse:
+    build: .
+    container_name: portalpulse-dashboard
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      - ./dashboard/portalpulse.db:/app/dashboard/portalpulse.db
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    container_name: portalpulse-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
