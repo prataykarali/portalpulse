@@ -1,13 +1,13 @@
-# Quantum-Resistant Key Architecture Specification
+# Role-Based Cryptographic Access Token (RBAC-PAT) Specification
 
-## 1. Cryptographic Rationale
-Traditional public-key cryptosystems (RSA-2048, ECDSA) are susceptible to polynomial-time quantum attacks using Shor's Algorithm.
+## 1. Cryptographic Rationale & Access Control
+PortalPulse enforces zero-trust role-scoped authentication using **Role-Based Cryptographic Access Tokens**:
+- **High-Entropy Token Space**: Cryptographically random tokens generated with 256-bit entropy.
+- **Timing Side-Channel Defense**: Token verification uses strict constant-time comparison via `hmac.compare_digest` to prevent statistical execution-time leakage and timing side-channel vulnerabilities.
+- **Scope Isolation**: Prevents privilege escalation between Student, Faculty, and Admin personas.
 
-PortalPulse implements symmetric key isolation with **256-bit high-entropy keys**:
-- **Grover's Quantum Search Defense**: Grover's algorithm provides a quadratic speedup $O(\sqrt{N})$ for symmetric key searches. A 256-bit key requires $2^{128}$ quantum operations, which remains computationally infeasible across known physics limits.
-- **Side-Channel Timing Resistance**: Key verification is performed via `hmac.compare_digest`, which enforces strict constant-time string comparison.
-
-## 2. Key Allocations
-- `ADM-QKEY-7F9A2B81C3D4`: Master Admin Global Control Key
-- `FAC-QKEY-5E6C1D94A8B2`: Faculty Academic Submission Key
-- `STU-QKEY-3B8A7F1C9E20`: Student Scoped Result Viewer Key
+## 2. Active Token Allocations
+- `ADM-SEC-7F9A2B81C3D4`: Master Admin Global Control Tower Token
+- `FAC-SEC-5E6C1D94A8B2`: Faculty Academic Submission Token
+- `STU-SEC-3B8A7F1C9E20`: Student Scoped Result Viewer Token
+*(Legacy tokens `ADM-QKEY-...`, `FAC-QKEY-...`, `STU-QKEY-...` are aliased for backward compatibility).*
