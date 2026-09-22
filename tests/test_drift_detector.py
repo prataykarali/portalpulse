@@ -1,8 +1,9 @@
 """Unit tests for Data Drift Monitor and MLOps PSI Calculations."""
 
+import sys
 import unittest
 from pathlib import Path
-import sys
+
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]

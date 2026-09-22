@@ -42,7 +42,7 @@ if PY3:
 else:
     def _byte(i):
         return chr(i)
-    
+
     class FileNotFoundError(OSError): pass
     class TimeoutError(OSError): pass
 
@@ -50,7 +50,7 @@ _EOF, _INTR = None, None
 
 def _make_eof_intr():
     """Set constants _EOF and _INTR.
-    
+
     This avoids doing potentially costly operations on module load.
     """
     global _EOF, _INTR
@@ -84,13 +84,13 @@ def _make_eof_intr():
         except ImportError:
             #                         ^C, ^D
             (intr, eof) = (3, 4)
-    
+
     _INTR = _byte(intr)
     _EOF = _byte(eof)
 
 # setecho and setwinsize are pulled out here because on some platforms, we need
 # to do this from the child before we exec()
-    
+
 def _setecho(fd, state):
     errmsg = 'setecho() may not be called on this platform (it may still be possible to enable/disable echo when spawning the child process)'
 
@@ -127,7 +127,7 @@ def _setwinsize(fd, rows, cols):
 
 class PtyProcess(object):
     '''This class represents a process running in a pseudoterminal.
-    
+
     The main constructor is the :meth:`spawn` classmethod.
     '''
     string_type = bytes
@@ -148,7 +148,7 @@ class PtyProcess(object):
         write_to_stdout = sys.stdout.write
 
     encoding = None
-    
+
     argv = None
     env = None
     launch_dir = None
@@ -301,7 +301,7 @@ class PtyProcess(object):
 
         # Parent
         inst = cls(pid, fd)
-        
+
         # Set some informational attributes
         inst.argv = argv
         if env is not None:
@@ -351,9 +351,9 @@ class PtyProcess(object):
                 args.append("env=%r" % self.env)
             if self.launch_dir is not None:
                 args.append("cwd=%r" % self.launch_dir)
-            
+
             return "{}.spawn({})".format(clsname, ", ".join(args))
-        
+
         else:
             return "{}(pid={}, fd={})".format(clsname, self.pid, self.fd)
 
@@ -511,7 +511,7 @@ class PtyProcess(object):
 
         Can block if there is nothing to read. Raises :exc:`EOFError` if the
         terminal was closed.
-        
+
         Unlike Pexpect's ``read_nonblocking`` method, this doesn't try to deal
         with the vagaries of EOF on platforms that do strange things, like IRIX
         or older Solaris systems. It handles the errno=EIO pattern used on
@@ -562,7 +562,7 @@ class PtyProcess(object):
 
     def write(self, s, flush=True):
         """Write bytes to the pseudoterminal.
-        
+
         Returns the number of bytes written.
         """
         return self._writeb(s, flush=flush)

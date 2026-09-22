@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Global Retail — SuperDeal Storefront</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Sora:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Plus Jakarta Sans', sans-serif; }
+    body { background: #f8faff; color: #0f172a; min-height: 100vh; display: flex; flex-direction: column; }
+    .pulse-banner { background: #0f172a; color: #f8fafc; padding: 10px 24px; font-size: 0.85rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #7c5cfc; }
+    .pulse-tag { background: rgba(124, 92, 252, 0.2); color: #c084fc; padding: 4px 10px; border-radius: 9999px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+    .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981; }
+    header { background: #ffffff; border-bottom: 1px solid #e2e8f0; padding: 18px 48px; display: flex; align-items: center; justify-content: space-between; }
+    .logo { font-family: 'Sora', sans-serif; font-size: 1.3rem; font-weight: 700; color: #7c5cfc; display: flex; align-items: center; gap: 8px; }
+    main { max-width: 1000px; margin: 40px auto; padding: 0 24px; width: 100%; flex: 1; }
+    .sale-badge { display: inline-block; background: #fee2e2; color: #ef4444; font-weight: 700; padding: 4px 12px; border-radius: 9999px; font-size: 0.8rem; margin-bottom: 12px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-top: 24px; }
+    .product-card { background: white; border: 1px solid #e2e8f0; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
+    .product-img { height: 160px; background: #f1f5f9; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 3.5rem; margin-bottom: 16px; }
+    .price-row { display: flex; align-items: baseline; gap: 8px; margin: 12px 0 16px 0; }
+    .price { font-size: 1.4rem; font-weight: 700; color: #0f172a; }
+    .old-price { font-size: 0.95rem; color: #94a3b8; text-decoration: line-through; }
+    .btn-buy { background: #7c5cfc; color: white; border: none; padding: 12px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    .btn-buy:hover { background: #6d28d9; }
+  </style>
+</head>
+<body>
+  <div class="pulse-banner">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <span class="pulse-tag"><span class="pulse-dot"></span> CONNECTED TO PORTALPULSE</span>
+      <span>Checkout Latency Guard & Rate Limiter Active</span>
+    </div>
+    <a href="/#/app/portals" style="color: #c084fc; text-decoration: none; font-weight: 600;">Return to PortalPulse AIOps →</a>
+  </div>
+  <header>
+    <div class="logo">🛒 SuperDeal Storefront</div>
+    <div>Cart: <strong id="cartCount">0</strong> items</div>
+  </header>
+  <main>
+    <span class="sale-badge">⚡ FLASH DEAL EVENT LIVE</span>
+    <h1 style="font-family: 'Sora', sans-serif; font-size: 1.8rem;">Exclusive Electronics & Gear</h1>
+    <div class="grid">
+      <div class="product-card">
+        <div class="product-img">🎧</div>
+        <h3>Noise-Cancelling Wireless Headphones</h3>
+        <p style="color: #64748b; font-size: 0.9rem;">40h battery, spatial audio, ANC.</p>
+        <div class="price-row"><span class="price">$149</span><span class="old-price">$299</span></div>
+        <button class="btn-buy" onclick="buyItem(this)">Instant Checkout ⚡</button>
+      </div>
+      <div class="product-card">
+        <div class="product-img">⌚</div>
+        <h3>Ultra Smartwatch Pro</h3>
+        <p style="color: #64748b; font-size: 0.9rem;">OLED display, ECG, titanium chassis.</p>
+        <div class="price-row"><span class="price">$229</span><span class="old-price">$399</span></div>
+        <button class="btn-buy" onclick="buyItem(this)">Instant Checkout ⚡</button>
+      </div>
+      <div class="product-card">
+        <div class="product-img">💻</div>
+        <h3>ProBook M3 Max Laptop</h3>
+        <p style="color: #64748b; font-size: 0.9rem;">16-Core CPU, 32GB RAM, 1TB SSD.</p>
+        <div class="price-row"><span class="price">$1,799</span><span class="old-price">$2,199</span></div>
+        <button class="btn-buy" onclick="buyItem(this)">Instant Checkout ⚡</button>
+      </div>
+    </div>
+  </main>
+  <script>
+    let count = 0;
+    function buyItem(btn) {
+      btn.textContent = 'Processing...';
+      setTimeout(() => {
+        count++;
+        document.getElementById('cartCount').textContent = count;
+        btn.textContent = 'Purchased! ✔';
+        setTimeout(() => btn.textContent = 'Instant Checkout ⚡', 1500);
+      }, 300);
+    }
+  </script>
+</body>
+</html>

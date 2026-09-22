@@ -8,6 +8,7 @@ To load test the university portal with 10,000 concurrent students without requi
 from locust import HttpUser, task, between
 import random
 
+
 class StudentUser(HttpUser):
     wait_time = between(1.5, 4.0)
 

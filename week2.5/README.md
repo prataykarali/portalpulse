@@ -1,6 +1,6 @@
 # Week 2.5: Real Database Persistence, Quantum Keys & High-Concurrency Architecture
 
-> **PortalPulse Week 2.5 Engineering Milestone**  
+> **PortalPulse Week 2.5 Engineering Milestone**
 > *Bridging deep learning telemetry simulation with real database persistence, 3-role quantum-resistant access control, and distributed virtual user load generation architecture.*
 
 ---

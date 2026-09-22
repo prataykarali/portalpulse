@@ -1,13 +1,16 @@
 """Unit tests for multi-parameter telemetry synthesizer, SLA limits, and fault injection."""
 
+import sys
 import unittest
 from pathlib import Path
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from week2.team1_simulation.telemetry_synthesizer import synthesize_telemetry, find_saturation_knee
+from week2.team1_simulation.telemetry_synthesizer import (
+    find_saturation_knee,
+    synthesize_telemetry,
+)
 
 
 class TestTelemetrySynthesizer(unittest.TestCase):
@@ -31,12 +34,16 @@ class TestTelemetrySynthesizer(unittest.TestCase):
 
     def test_db_lock_fault_injection(self):
         tel_normal = synthesize_telemetry("Result Declaration Rush", 6000, num_pods=4, fault_type="None")
-        tel_fault = synthesize_telemetry("Result Declaration Rush", 6000, num_pods=4, fault_type="DB Lock Contention")
+        tel_fault = synthesize_telemetry(
+            "Result Declaration Rush", 6000, num_pods=4, fault_type="DB Lock Contention"
+        )
         self.assertGreater(tel_fault["db_latency"], tel_normal["db_latency"])
         self.assertIn("Fault Injected", tel_fault["bottleneck"])
 
     def test_network_degradation_fault(self):
-        tel_net = synthesize_telemetry("Regular Academic Day", 3000, num_pods=4, fault_type="Network Degradation")
+        tel_net = synthesize_telemetry(
+            "Regular Academic Day", 3000, num_pods=4, fault_type="Network Degradation"
+        )
         self.assertGreaterEqual(tel_net["net_latency"], 350.0)
         self.assertGreater(tel_net["error_rate"], 0.01)
 
@@ -60,7 +67,9 @@ class TestTelemetrySynthesizer(unittest.TestCase):
             self.assertGreater(tel["rps"], 0)
 
     def test_knee_point_saturation_sweep(self):
-        knee_res = find_saturation_knee("Result Declaration Rush", num_pods=4, db_pool_size=100, num_points=15)
+        knee_res = find_saturation_knee(
+            "Result Declaration Rush", num_pods=4, db_pool_size=100, num_points=15
+        )
         self.assertIn("saturation_threshold_users", knee_res)
         self.assertGreater(knee_res["saturation_threshold_users"], 1000)
         self.assertEqual(len(knee_res["sweep_data"]), 15)

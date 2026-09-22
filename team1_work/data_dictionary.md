@@ -1,7 +1,7 @@
 # Data dictionary
 
-Master table: `processed/dataset_clean.csv`  
-Grain: **one row = one minute** of the ERP-like system.  
+Master table: `processed/dataset_clean.csv`
+Grain: **one row = one minute** of the ERP-like system.
 Rows: 39,584 after cleaning. Columns: 14.
 
 | Column | Meaning | Type | Role | Allowed values / notes |

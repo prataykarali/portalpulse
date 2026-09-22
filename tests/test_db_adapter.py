@@ -1,24 +1,22 @@
 """Unit tests for Database Repository Adapter and Hybrid Redis Caching Layer."""
 
+import sys
 import unittest
 from pathlib import Path
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from dashboard.db import (
     DB_ADAPTER,
-    CACHE,
-    init_db,
     add_student,
-    get_all_students,
     get_all_faculty,
-    get_students_by_department,
-    get_student_results,
-    update_student_grade,
     get_db_stats,
+    get_student_results,
+    get_students_by_department,
+    init_db,
     run_db_stress_benchmark,
+    update_student_grade,
 )
 
 
@@ -34,7 +32,7 @@ class TestDatabaseAdapter(unittest.TestCase):
 
     def test_student_crud_and_idempotency(self):
         enroll = "2024TEST888"
-        ok, msg = add_student(
+        ok, _msg = add_student(
             enrollment_no=enroll,
             name="Arch Test Student",
             email="arch.test@iem.edu.in",
@@ -71,7 +69,7 @@ class TestDatabaseAdapter(unittest.TestCase):
         # Update grade invalidates cache
         sub_code = res1["results"][0]["subject_code"]
         sem = res1["results"][0]["semester"]
-        ok, msg = update_student_grade(enroll, sem, sub_code, "O", 10.0)
+        ok, _msg = update_student_grade(enroll, sem, sub_code, "O", 10.0)
         self.assertTrue(ok)
 
         # Third read should be a cache miss due to invalidation

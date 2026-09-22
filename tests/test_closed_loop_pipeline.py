@@ -1,13 +1,17 @@
 """Integration tests for the complete end-to-end Closed-Loop Control System."""
 
+import sys
 import unittest
 from pathlib import Path
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from dashboard.db import ROLE_ACCESS_TOKENS, validate_role_access_token, get_student_results
+from dashboard.db import (
+    ROLE_ACCESS_TOKENS,
+    get_student_results,
+    validate_role_access_token,
+)
 from week2.team1_simulation.protection_controller import CLOSED_LOOP_CONTROLLER
 
 

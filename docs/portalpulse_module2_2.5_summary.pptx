@@ -1,0 +1,26 @@
+# PortalPulse Module 2 & Week 2.5 Summary
+
+## Module 2 (Week 2) – Predictive Traffic Intelligence
+- Build real-time predictive system for capacity limits and risk decisions
+- Traffic Simulator with 5 scenarios (Result Rush, Exam Fee, Course Reg, etc.)
+- Multi-target ML models (XGBoost primary, LightGBM secondary, MLP syllabus)
+- Telemetry synthesizer + feature pipeline for live traffic input
+- Deterministic Decision Engine (SAFE / WARNING / CRITICAL states)
+- Live Streamlit dashboard with 5 core operational questions
+
+## Week 2.5 – Production Backend, Auth & Load Testing
+- Hybrid SQLite (WAL) + Redis caching layer with sub-ms reads
+- 3-Role Quantum-Resistant Authentication (Student / Faculty / Admin keys)
+- Real DB persistence + audit logging + 60-query stress benchmarks
+- Virtual User Swarming for safe 5k–10k concurrent authenticated sessions
+- 3-persona dashboard sidebar (Student / Faculty / Master Admin)
+- Token-bucket Virtual Waiting Room + circuit breakers
+
+## Key Architecture Highlights
+- Multi-tier: Ingress (Nginx + Redis ZSET) → Application → Data Layer
+- Application-aware predictive governor (vs Cloudflare edge CDN)
+- Explainable, deterministic control actions
+- Non-DDoS safe load testing with real HTTP/2 sessions
+
+---
+*Source: docs/module2_plan.md + week2.5/README.md + model_comparison.md*

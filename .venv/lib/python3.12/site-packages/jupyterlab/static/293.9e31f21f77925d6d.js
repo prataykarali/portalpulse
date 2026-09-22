@@ -16,10 +16,10 @@
     stroke-dasharray: 8;
   }
   .node-icon-text {
-    display: flex; 
+    display: flex;
     align-items: center;
   }
-  
+
   .node-icon-text > div {
     color: #fff;
     margin: 1px;

@@ -1,0 +1,162 @@
+{
+  "model_name": "PortalPulse-MultiHorizon-XGBoost",
+  "model_version": "2.0.0",
+  "created_at": "2026-09-04T12:59:48.645149+00:00",
+  "feature_names": [
+    "hour",
+    "day_of_week",
+    "is_weekend",
+    "is_result_window",
+    "concurrent_users",
+    "requests_per_sec",
+    "cpu_usage",
+    "memory_usage",
+    "network_usage",
+    "latency_ms",
+    "error_rate",
+    "cpu_lag_1",
+    "cpu_lag_5",
+    "rps_lag_1",
+    "rps_lag_5",
+    "rolling_rps_5m",
+    "rolling_latency_5m",
+    "rolling_cpu_5m",
+    "traffic_growth_rate",
+    "error_growth_rate"
+  ],
+  "target_names": [
+    "cpu_5m",
+    "cpu_10m",
+    "cpu_15m",
+    "latency_5m",
+    "latency_10m",
+    "latency_15m",
+    "rps_5m",
+    "rps_10m",
+    "rps_15m",
+    "safe_capacity"
+  ],
+  "hyperparameters": {
+    "max_depth": 6,
+    "n_estimators": 120,
+    "learning_rate": 0.1,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "random_state": 42,
+    "n_jobs": -1
+  },
+  "dataset_summary": {
+    "train_rows": 28720,
+    "val_rows": 4305,
+    "test_rows": 6544,
+    "feature_count": 20,
+    "target_count": 10
+  },
+  "safe_capacity_test_r2": 0.9128,
+  "overall_test_r2": 0.5353,
+  "inference_latency_ms": 0.6684,
+  "test_metrics": {
+    "cpu_5m": {
+      "mae": 6.05,
+      "rmse": 7.644,
+      "r2": 0.6394
+    },
+    "cpu_10m": {
+      "mae": 6.392,
+      "rmse": 8.024,
+      "r2": 0.6026
+    },
+    "cpu_15m": {
+      "mae": 6.494,
+      "rmse": 8.164,
+      "r2": 0.5891
+    },
+    "latency_5m": {
+      "mae": 12.362,
+      "rmse": 16.313,
+      "r2": 0.3046
+    },
+    "latency_10m": {
+      "mae": 12.988,
+      "rmse": 17.416,
+      "r2": 0.2069
+    },
+    "latency_15m": {
+      "mae": 13.106,
+      "rmse": 17.357,
+      "r2": 0.2126
+    },
+    "rps_5m": {
+      "mae": 69.801,
+      "rmse": 89.989,
+      "r2": 0.6587
+    },
+    "rps_10m": {
+      "mae": 74.352,
+      "rmse": 95.288,
+      "r2": 0.6173
+    },
+    "rps_15m": {
+      "mae": 74.496,
+      "rmse": 96.344,
+      "r2": 0.609
+    },
+    "safe_capacity": {
+      "mae": 131.393,
+      "rmse": 167.38,
+      "r2": 0.9128
+    }
+  },
+  "validation_metrics": {
+    "cpu_5m": {
+      "mae": 5.541,
+      "rmse": 7.027,
+      "r2": 0.5527
+    },
+    "cpu_10m": {
+      "mae": 5.798,
+      "rmse": 7.345,
+      "r2": 0.5115
+    },
+    "cpu_15m": {
+      "mae": 5.943,
+      "rmse": 7.561,
+      "r2": 0.4822
+    },
+    "latency_5m": {
+      "mae": 11.289,
+      "rmse": 14.969,
+      "r2": 0.2375
+    },
+    "latency_10m": {
+      "mae": 11.7,
+      "rmse": 15.578,
+      "r2": 0.1748
+    },
+    "latency_15m": {
+      "mae": 11.873,
+      "rmse": 15.737,
+      "r2": 0.1579
+    },
+    "rps_5m": {
+      "mae": 64.571,
+      "rmse": 82.341,
+      "r2": 0.6186
+    },
+    "rps_10m": {
+      "mae": 67.618,
+      "rmse": 86.516,
+      "r2": 0.579
+    },
+    "rps_15m": {
+      "mae": 70.182,
+      "rmse": 89.808,
+      "r2": 0.5466
+    },
+    "safe_capacity": {
+      "mae": 131.842,
+      "rmse": 169.894,
+      "r2": 0.9111
+    }
+  }
+}

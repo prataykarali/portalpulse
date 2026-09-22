@@ -31,7 +31,7 @@
     stroke: ${e.requirementBorderColor};
     stroke-width: ${e.requirementBorderSize};
   }
-  
+
   .reqTitle, .reqLabel{
     fill:  ${e.requirementTextColor};
   }

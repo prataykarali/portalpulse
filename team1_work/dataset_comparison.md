@@ -134,7 +134,7 @@ Sources used: Hugging Face Hub, Internet Traffic Archive (NASA HTTP), GitHub mir
 
 ## Selection
 
-**Primary:** NASA HTTP Jul95 (G)  
+**Primary:** NASA HTTP Jul95 (G)
 **Secondary:** University Apache labeled (A)
 
 Not chosen as primary despite theme (A) because 2,812 sparse minutes and a security target would force the model to learn “is this request an attack?”, which is the wrong Module 1 question.

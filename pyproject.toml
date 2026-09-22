@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "portalpulse"
+version = "2.0.0"
+description = "PortalPulse Autonomous SRE & Control Tower Platform"
+readme = "README.md"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --strict-markers"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::starlette.testclient.StarletteDeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+exclude = [
+    ".git",
+    ".venv",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "Module1_Data",
+    "ppt_images",
+    "team1_work",
+    "team2_work",
+    "traffic_bot_model",
+    "week1",
+    "week2",
+    "week2.5",
+    "notebooks",
+    "*.ipynb",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+ignore = [
+    "E501",  # Line too long (handled by ruff format)
+    "B008",  # Do not perform function call in argument defaults (FastAPI Query/Depends)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]
+"dashboard/*" = ["E402"]
+"scripts/*" = ["E402"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_configs = true
+mypy_path = "."
+explicit_package_bases = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[tool.coverage.run]
+source = ["backend"]
+omit = [
+    "tests/*",
+    ".venv/*",
+]
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true

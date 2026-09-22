@@ -132,7 +132,7 @@
     overflow: visible;
     vertical-align: -0.125em;
   }
-  
+
   .node .label-icon path {
     fill: currentColor;
     stroke: revert;

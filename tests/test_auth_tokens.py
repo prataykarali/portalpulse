@@ -1,17 +1,17 @@
 """Unit tests for Role-Based Cryptographic Access Tokens (RBAC-PAT)."""
 
+import sys
 import unittest
 from pathlib import Path
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from dashboard.db import (
-    ROLE_ACCESS_TOKENS,
     LEGACY_KEYS,
-    validate_role_access_token,
+    ROLE_ACCESS_TOKENS,
     validate_quantum_key,
+    validate_role_access_token,
 )
 
 

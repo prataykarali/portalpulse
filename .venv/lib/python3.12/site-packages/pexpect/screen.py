@@ -428,4 +428,3 @@ class screen:
 #        Delete line             Esc [ Pn M
 #        Delete character        Esc [ Pn P
 #        Scrolling region        Esc [ Pn(top);Pn(bot) r
-

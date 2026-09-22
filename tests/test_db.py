@@ -1,20 +1,18 @@
 """Unit tests for PortalPulse SQLite persistence and Hybrid Redis caching."""
 
+import sys
 import unittest
 from pathlib import Path
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from dashboard.db import (
     add_student,
-    get_all_students,
-    get_db_stats,
     get_student_results,
     init_db,
-    seed_sample_students,
 )
+
 
 class TestDatabase(unittest.TestCase):
     def setUp(self):
@@ -22,7 +20,7 @@ class TestDatabase(unittest.TestCase):
 
     def test_add_and_query_student(self):
         enroll = "2024TEST999"
-        ok, msg = add_student(
+        ok, _msg = add_student(
             enrollment_no=enroll,
             name="Test Student",
             email="test.student@iem.edu.in",
@@ -44,6 +42,7 @@ class TestDatabase(unittest.TestCase):
         # Second query should hit cache
         res2 = get_student_results(enroll, bypass_cache=False)
         self.assertTrue(res2["cache_hit"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@
 
 **Status: COMPLETE.** Do not keep retraining randomly. This is the Week 1 baseline.
 
-Official data package (read-only): `../Module1_Data/`  
+Official data package (read-only): `../Module1_Data/`
 Do **not** edit `../team1_work/` or `../Module1_Data/master_clean.csv`.
 
 ## Frozen files

@@ -18,7 +18,7 @@ latency_ms
 error_rate
 ```
 
-Primary **y**: `safe_capacity`  
+Primary **y**: `safe_capacity`
 Optional second **y**: `risk_level`
 
 Leave `timestamp` out of the model matrix (use it only to do a time-based split).
@@ -76,7 +76,7 @@ The costly error is a **false negative**: OVERLOADED predicted as SAFE.
 
 ## Split advice (Team 2 owns this)
 
-Preferred: **time split** (e.g. last 5 calendar days = test, the 3 days before that = validation).  
+Preferred: **time split** (e.g. last 5 calendar days = test, the 3 days before that = validation).
 Acceptable: stratified random split on `risk_level` if they want more overloaded minutes in the test set.
 
 Fit scalers on train only. Do not ask Team 1 to re-export splits if a transform changes.

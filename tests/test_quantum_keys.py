@@ -1,13 +1,14 @@
 """Unit tests for 256-bit Quantum-Resistant symmetric key validator."""
 
+import sys
 import unittest
 from pathlib import Path
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from dashboard.db import QUANTUM_KEYS, validate_quantum_key
+
 
 class TestQuantumKeys(unittest.TestCase):
     def test_valid_admin_key(self):
@@ -25,6 +26,7 @@ class TestQuantumKeys(unittest.TestCase):
     def test_invalid_key_rejection(self):
         role = validate_quantum_key("INVALID-QUANTUM-KEY-000")
         self.assertIsNone(role)
+
 
 if __name__ == "__main__":
     unittest.main()

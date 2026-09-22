@@ -273,4 +273,3 @@ def find_saturation_knee(
         "knee_latency_ms": round(knee_latency_estimate, 1),
         "sweep_data": sweep_results,
     }
-

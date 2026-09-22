@@ -1,0 +1,40 @@
+- generic [ref=e3]:
+  - banner
+  - generic [ref=e6]:
+    - generic [ref=e17]:
+      - heading "PortalPulse Gateway 🛡️" [level=1] [ref=e20]:
+        - text: PortalPulse Gateway 🛡️
+        - link "Link to heading" [ref=e22] [cursor=pointer]:
+          - /url: "#portal-pulse-gateway"
+      - paragraph [ref=e25]: Autonomous Closed-Loop Traffic Control & Prescriptive Resilience
+      - generic [ref=e26]: 🔐 Role-Based Cryptographic Access Tokens (HMAC-SHA256 Constant-Time Verification)
+    - generic [ref=e32]:
+      - tablist [ref=e33]:
+        - tab [selected] [ref=e34] [cursor=pointer]:
+          - paragraph [ref=e36]: 🎓 Student Login
+        - tab [ref=e38] [cursor=pointer]:
+          - paragraph [ref=e40]: 👨‍🏫 Faculty Login
+        - tab [ref=e41] [cursor=pointer]:
+          - paragraph [ref=e43]: 🛡️ Master Admin Login
+      - tabpanel "🎓 Student Login" [ref=e44]:
+        - generic [ref=e45]:
+          - heading "Student Portal Access" [level=5] [ref=e51]:
+            - text: Student Portal Access
+            - generic [ref=e52]:
+              - link "Link to heading":
+                - /url: "#student-portal-access"
+          - generic [ref=e54]:
+            - paragraph [ref=e58]: Enrollment Number
+            - textbox "Enrollment Number" [ref=e61]:
+              - /placeholder: e.g. 2024CS1001
+              - text: 2024CS1001
+          - generic [ref=e63]:
+            - paragraph [ref=e67]: Student Access Token
+            - generic [ref=e69]:
+              - textbox "Student Access Token" [ref=e70]:
+                - /placeholder: ""
+                - text: STU-SEC-3B8A7F1C9E20
+              - button "Show password" [ref=e71] [cursor=pointer]:
+                - generic [ref=e72]: visibility
+          - button [ref=e76] [cursor=pointer]:
+            - paragraph [ref=e80]: 🚀 Enter Student Portal

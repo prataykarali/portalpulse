@@ -7,8 +7,6 @@ coupled with an in-memory/remote Redis hybrid caching layer and a PostgreSQL mig
 
 from __future__ import annotations
 
-import collections
-import hashlib
 import hmac
 import os
 import random
@@ -17,7 +15,7 @@ import time
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 DB_PATH = Path(__file__).resolve().parent / "portalpulse.db"
 
@@ -37,7 +35,7 @@ LEGACY_KEYS = {
 }
 
 
-def validate_role_access_token(token_input: str) -> Optional[str]:
+def validate_role_access_token(token_input: str) -> str | None:
     """Validates Role-Based Cryptographic Access Token using constant-time comparison."""
     token_input = token_input.strip()
     # Check primary modern tokens
@@ -60,7 +58,7 @@ class HybridRedisCache:
 
     def __init__(self) -> None:
         self.stats = {"hits": 0, "misses": 0, "sets": 0}
-        self._memory_store: Dict[str, Tuple[Any, float]] = {}
+        self._memory_store: dict[str, tuple[Any, float]] = {}
         self._max_entries = 3000
         self.redis_client = None
         self.backend = "In-Memory LRU Cache (TTL Enabled)"
@@ -86,7 +84,7 @@ class HybridRedisCache:
             self.redis_client = None
             self.backend = "In-Memory Microsecond Cache (Local Standalone)"
 
-    def get(self, key: str) -> Optional[Any]:
+    def get(self, key: str) -> Any | None:
         if self.redis_client:
             try:
                 import json
@@ -147,7 +145,7 @@ class HybridRedisCache:
         self._memory_store.clear()
         self.stats = {"hits": 0, "misses": 0, "sets": 0}
 
-    def get_stats(self) -> Dict[str, Any]:
+    def get_stats(self) -> dict[str, Any]:
         total = self.stats["hits"] + self.stats["misses"]
         hit_ratio = (self.stats["hits"] / total * 100.0) if total > 0 else 0.0
         return {
@@ -167,28 +165,25 @@ CACHE = HybridRedisCache()
 # Database Repository & Engine Abstraction Layer (SQLite WAL / Postgres)
 # =====================================================================
 
+
 class BaseDatabaseAdapter(ABC):
     """Abstract interface defining the contract for PortalPulse persistence backends."""
 
     @abstractmethod
     def initialize(self) -> None:
         """Initialize database schema, tables, and indices."""
-        pass
 
     @abstractmethod
     def get_connection(self) -> Any:
         """Get an active database connection from the connection pool."""
-        pass
 
     @abstractmethod
     def get_engine_name(self) -> str:
         """Return the persistence engine name and operational mode."""
-        pass
 
     @abstractmethod
-    def get_metrics(self) -> Dict[str, Any]:
+    def get_metrics(self) -> dict[str, Any]:
         """Return engine-specific operational metrics (connections, lock waits, latency)."""
-        pass
 
 
 class SQLiteWALAdapter(BaseDatabaseAdapter):
@@ -291,17 +286,13 @@ class SQLiteWALAdapter(BaseDatabaseAdapter):
         finally:
             self.release_connection(conn)
 
-    def get_metrics(self) -> Dict[str, Any]:
-        avg_lat = (
-            round(self._cumulative_latency_ms / max(self._total_queries, 1), 3)
-        )
+    def get_metrics(self) -> dict[str, Any]:
+        avg_lat = round(self._cumulative_latency_ms / max(self._total_queries, 1), 3)
         return {
             "engine": self.get_engine_name(),
             "active_connections": self._active_connections,
             "max_pool_size": self._max_pool,
-            "pool_utilization_pct": round(
-                (self._active_connections / float(self._max_pool)) * 100.0, 1
-            ),
+            "pool_utilization_pct": round((self._active_connections / float(self._max_pool)) * 100.0, 1),
             "lock_waits": self._lock_waits,
             "total_queries_executed": self._total_queries,
             "avg_query_latency_ms": avg_lat,
@@ -325,7 +316,10 @@ class PostgresAdapterStub(BaseDatabaseAdapter):
         self.dbname = dbname
         self.user = user
         self.max_pool = max_pool
-        self.read_replicas = ["replica1.portalpulse.internal", "replica2.portalpulse.internal"]
+        self.read_replicas = [
+            "replica1.portalpulse.internal",
+            "replica2.portalpulse.internal",
+        ]
 
     def get_engine_name(self) -> str:
         return f"PostgreSQL 16 Enterprise (PgBouncer Pool: {self.max_pool})"
@@ -335,9 +329,11 @@ class PostgresAdapterStub(BaseDatabaseAdapter):
         pass
 
     def get_connection(self) -> Any:
-        raise NotImplementedError("PostgreSQL connection requires psycopg2/asyncpg in production target environment.")
+        raise NotImplementedError(
+            "PostgreSQL connection requires psycopg2/asyncpg in production target environment."
+        )
 
-    def get_metrics(self) -> Dict[str, Any]:
+    def get_metrics(self) -> dict[str, Any]:
         return {
             "engine": self.get_engine_name(),
             "host": self.host,
@@ -440,11 +436,46 @@ def seed_sample_faculty_if_empty() -> None:
         cursor.execute("SELECT COUNT(*) FROM faculty;")
         if cursor.fetchone()[0] == 0:
             sample_fac = [
-                ("FAC-CSE-101", "Dr. Sayan Mukherjee", "sayan.m@iem.edu.in", "Computer Science & Engineering", "Professor & Head", "CS501, CS505"),
-                ("FAC-CSE-102", "Prof. Sharmistha Roy", "sharmistha.r@iem.edu.in", "Computer Science & Engineering", "Associate Professor", "CS502, CS503"),
-                ("FAC-IT-101", "Dr. Arindam Ghosh", "arindam.g@iem.edu.in", "Information Technology", "Professor", "IT501, IT504"),
-                ("FAC-ECE-101", "Dr. Debasis Banerjee", "debasis.b@iem.edu.in", "Electronics & Communication", "Professor", "EC501, EC503"),
-                ("FAC-ME-101", "Prof. Rakesh Verma", "rakesh.v@iem.edu.in", "Mechanical Engineering", "Assistant Professor", "ME501, ME502"),
+                (
+                    "FAC-CSE-101",
+                    "Dr. Sayan Mukherjee",
+                    "sayan.m@iem.edu.in",
+                    "Computer Science & Engineering",
+                    "Professor & Head",
+                    "CS501, CS505",
+                ),
+                (
+                    "FAC-CSE-102",
+                    "Prof. Sharmistha Roy",
+                    "sharmistha.r@iem.edu.in",
+                    "Computer Science & Engineering",
+                    "Associate Professor",
+                    "CS502, CS503",
+                ),
+                (
+                    "FAC-IT-101",
+                    "Dr. Arindam Ghosh",
+                    "arindam.g@iem.edu.in",
+                    "Information Technology",
+                    "Professor",
+                    "IT501, IT504",
+                ),
+                (
+                    "FAC-ECE-101",
+                    "Dr. Debasis Banerjee",
+                    "debasis.b@iem.edu.in",
+                    "Electronics & Communication",
+                    "Professor",
+                    "EC501, EC503",
+                ),
+                (
+                    "FAC-ME-101",
+                    "Prof. Rakesh Verma",
+                    "rakesh.v@iem.edu.in",
+                    "Mechanical Engineering",
+                    "Assistant Professor",
+                    "ME501, ME502",
+                ),
             ]
             cursor.executemany(
                 """
@@ -467,7 +498,7 @@ def init_db() -> None:
         seed_sample_students(count=250)
 
 
-def get_profile(identifier: str, role: str) -> Dict[str, Any]:
+def get_profile(identifier: str, role: str) -> dict[str, Any]:
     """Returns comprehensive persona profile metadata for Student, Faculty, or Admin."""
     identifier_clean = identifier.strip().upper()
 
@@ -517,7 +548,13 @@ def get_profile(identifier: str, role: str) -> Dict[str, Any]:
             "status": "ACTIVE",
             "academic_advisor": "Dr. Sayan Mukherjee (Professor & HOD, CSE)",
             "credit_hours_completed": 110,
-            "active_courses": ["CS501 - Algorithms", "CS502 - OS", "CS503 - DBMS", "CS504 - Networks", "CS505 - AI/ML"],
+            "active_courses": [
+                "CS501 - Algorithms",
+                "CS502 - OS",
+                "CS503 - DBMS",
+                "CS504 - Networks",
+                "CS505 - AI/ML",
+            ],
             "campus_residence": "Vivekananda Student Hall of Residence, Block B-304",
             "attendance_rate_pct": 94.5,
         }
@@ -540,7 +577,10 @@ def get_profile(identifier: str, role: str) -> Dict[str, Any]:
                     "courses_taught": f["courses_taught"],
                     "office_location": "Tech Tower Block A, Room 402",
                     "office_hours": "Mon & Wed: 2:00 PM – 4:30 PM",
-                    "active_batches_mentored": ["B.Tech CSE Year 3 (Batch A & B)", "M.Tech Distributed Systems"],
+                    "active_batches_mentored": [
+                        "B.Tech CSE Year 3 (Batch A & B)",
+                        "M.Tech Distributed Systems",
+                    ],
                     "total_students_enrolled": 164,
                     "research_lab": "High-Performance Autonomous Systems Lab (HPASL)",
                 }
@@ -557,7 +597,10 @@ def get_profile(identifier: str, role: str) -> Dict[str, Any]:
             "courses_taught": "CS501 (Algorithms), CS505 (AI & ML)",
             "office_location": "Tech Tower Block A, Room 402",
             "office_hours": "Mon & Wed: 2:00 PM – 4:30 PM",
-            "active_batches_mentored": ["B.Tech CSE Year 3 (Batch A)", "B.Tech CSE Year 4 Honors"],
+            "active_batches_mentored": [
+                "B.Tech CSE Year 3 (Batch A)",
+                "B.Tech CSE Year 4 Honors",
+            ],
             "total_students_enrolled": 164,
             "research_lab": "High-Performance Autonomous Systems Lab (HPASL)",
         }
@@ -585,14 +628,17 @@ def add_student(
     semester: int,
     cgpa: float,
     status: str = "ACTIVE",
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     conn = get_db_connection()
     enrollment_no_clean = enrollment_no.strip().upper()
     try:
         with conn:
             cursor = conn.cursor()
             # If already exists, delete or update cleanly for test idempotency
-            cursor.execute("SELECT id FROM students WHERE enrollment_no = ?;", (enrollment_no_clean,))
+            cursor.execute(
+                "SELECT id FROM students WHERE enrollment_no = ?;",
+                (enrollment_no_clean,),
+            )
             existing = cursor.fetchone()
             if existing:
                 student_id = existing["id"]
@@ -602,7 +648,16 @@ def add_student(
                     SET name = ?, email = ?, department = ?, year = ?, semester = ?, cgpa = ?, status = ?
                     WHERE id = ?
                     """,
-                    (name.strip(), email.strip().lower(), department, year, semester, cgpa, status, student_id),
+                    (
+                        name.strip(),
+                        email.strip().lower(),
+                        department,
+                        year,
+                        semester,
+                        cgpa,
+                        status,
+                        student_id,
+                    ),
                 )
                 cursor.execute("DELETE FROM academic_results WHERE student_id = ?;", (student_id,))
             else:
@@ -611,16 +666,23 @@ def add_student(
                     INSERT INTO students (enrollment_no, name, email, department, year, semester, cgpa, status)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (enrollment_no_clean, name.strip(), email.strip().lower(), department, year, semester, cgpa, status),
+                    (
+                        enrollment_no_clean,
+                        name.strip(),
+                        email.strip().lower(),
+                        department,
+                        year,
+                        semester,
+                        cgpa,
+                        status,
+                    ),
                 )
                 student_id = cursor.lastrowid
 
             subjects = SUBJECT_CATALOG.get(department, SUBJECT_CATALOG["Computer Science & Engineering"])
             for sem in range(1, semester + 1):
                 for code, sub_name, credits in subjects:
-                    grade_tuple = random.choices(
-                        GRADE_SCALE, weights=[w for _, _, w in GRADE_SCALE]
-                    )[0]
+                    grade_tuple = random.choices(GRADE_SCALE, weights=[w for _, _, w in GRADE_SCALE])[0]
                     cursor.execute(
                         """
                         INSERT INTO academic_results (student_id, semester, subject_code, subject_name, credits, grade, points, published_date)
@@ -638,9 +700,12 @@ def add_student(
                         ),
                     )
         CACHE.delete(f"results:{enrollment_no_clean}")
-        return True, f"Student {name} ({enrollment_no_clean}) added successfully with {semester * 5} academic records."
+        return (
+            True,
+            f"Student {name} ({enrollment_no_clean}) added successfully with {semester * 5} academic records.",
+        )
     except Exception as e:
-        return False, f"Failed to add student: {str(e)}"
+        return False, f"Failed to add student: {e!s}"
     finally:
         DB_ADAPTER.release_connection(conn)
 
@@ -651,7 +716,7 @@ def update_student_grade(
     subject_code: str,
     new_grade: str,
     new_points: float,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     enrollment_no = enrollment_no.strip().upper()
     conn = get_db_connection()
     try:
@@ -672,28 +737,86 @@ def update_student_grade(
                 SET grade = ?, points = ?, published_date = ?
                 WHERE student_id = ? AND semester = ? AND subject_code = ?
                 """,
-                (new_grade, new_points, datetime.now().strftime("%Y-%m-%d"), student_id, semester, subject_code),
+                (
+                    new_grade,
+                    new_points,
+                    datetime.now().strftime("%Y-%m-%d"),
+                    student_id,
+                    semester,
+                    subject_code,
+                ),
             )
             if cursor.rowcount == 0:
-                return False, f"No matching result record found for Subject {subject_code} in Semester {semester}."
+                return (
+                    False,
+                    f"No matching result record found for Subject {subject_code} in Semester {semester}.",
+                )
 
         CACHE.delete(f"results:{enrollment_no}")
-        return True, f"Grade updated to {new_grade} ({new_points}) for {student_name} ({subject_code})."
+        return (
+            True,
+            f"Grade updated to {new_grade} ({new_points}) for {student_name} ({subject_code}).",
+        )
     except Exception as e:
-        return False, f"Failed to update grade: {str(e)}"
+        return False, f"Failed to update grade: {e!s}"
     finally:
         DB_ADAPTER.release_connection(conn)
 
 
 def seed_sample_students(count: int = 200) -> int:
     first_names = [
-        "Aarav", "Vivaan", "Aditya", "Vihaan", "Arjun", "Sai", "Reyansh", "Ayaan", "Krishna", "Ishaan",
-        "Ananya", "Diya", "Isha", "Riya", "Aadhya", "Saanvi", "Kiara", "Myra", "Pari", "Navya",
-        "Rohan", "Priya", "Rahul", "Neha", "Sneha", "Kunal", "Meera", "Vikram", "Tanvi", "Siddharth"
+        "Aarav",
+        "Vivaan",
+        "Aditya",
+        "Vihaan",
+        "Arjun",
+        "Sai",
+        "Reyansh",
+        "Ayaan",
+        "Krishna",
+        "Ishaan",
+        "Ananya",
+        "Diya",
+        "Isha",
+        "Riya",
+        "Aadhya",
+        "Saanvi",
+        "Kiara",
+        "Myra",
+        "Pari",
+        "Navya",
+        "Rohan",
+        "Priya",
+        "Rahul",
+        "Neha",
+        "Sneha",
+        "Kunal",
+        "Meera",
+        "Vikram",
+        "Tanvi",
+        "Siddharth",
     ]
     last_names = [
-        "Sharma", "Verma", "Gupta", "Patel", "Reddy", "Nair", "Iyer", "Banerjee", "Chatterjee", "Mishra",
-        "Singh", "Kumar", "Das", "Roy", "Mukherjee", "Bhattacharya", "Sengupta", "Choudhury", "Bose", "Ghosh"
+        "Sharma",
+        "Verma",
+        "Gupta",
+        "Patel",
+        "Reddy",
+        "Nair",
+        "Iyer",
+        "Banerjee",
+        "Chatterjee",
+        "Mishra",
+        "Singh",
+        "Kumar",
+        "Das",
+        "Roy",
+        "Mukherjee",
+        "Bhattacharya",
+        "Sengupta",
+        "Choudhury",
+        "Bose",
+        "Ghosh",
     ]
 
     conn = get_db_connection()
@@ -728,9 +851,9 @@ def seed_sample_students(count: int = 200) -> int:
                     subjects = SUBJECT_CATALOG.get(dept, SUBJECT_CATALOG["Computer Science & Engineering"])
                     for sem in range(1, semester + 1):
                         for code, sub_name, credits in subjects:
-                            grade_tuple = random.choices(
-                                GRADE_SCALE, weights=[w for _, _, w in GRADE_SCALE]
-                            )[0]
+                            grade_tuple = random.choices(GRADE_SCALE, weights=[w for _, _, w in GRADE_SCALE])[
+                                0
+                            ]
                             cursor.execute(
                                 """
                                 INSERT INTO academic_results (student_id, semester, subject_code, subject_name, credits, grade, points, published_date)
@@ -754,7 +877,7 @@ def seed_sample_students(count: int = 200) -> int:
     return inserted
 
 
-def get_all_students(limit: int = 200, search_query: Optional[str] = None) -> List[Dict[str, Any]]:
+def get_all_students(limit: int = 200, search_query: str | None = None) -> list[dict[str, Any]]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -784,19 +907,19 @@ def get_all_students(limit: int = 200, search_query: Optional[str] = None) -> Li
         DB_ADAPTER.release_connection(conn)
 
 
-def get_all_faculty() -> List[Dict[str, Any]]:
+def get_all_faculty() -> list[dict[str, Any]]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, faculty_id, name, email, department, designation, courses_taught, created_at FROM faculty ORDER BY id ASC;")
+        cursor.execute(
+            "SELECT id, faculty_id, name, email, department, designation, courses_taught, created_at FROM faculty ORDER BY id ASC;"
+        )
         return [dict(r) for r in cursor.fetchall()]
     finally:
         DB_ADAPTER.release_connection(conn)
 
 
-def get_students_by_department(
-    department: str, semester: Optional[int] = None
-) -> List[Dict[str, Any]]:
+def get_students_by_department(department: str, semester: int | None = None) -> list[dict[str, Any]]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -825,9 +948,7 @@ def get_students_by_department(
         DB_ADAPTER.release_connection(conn)
 
 
-def get_student_results(
-    enrollment_no: str, bypass_cache: bool = False
-) -> Dict[str, Any]:
+def get_student_results(enrollment_no: str, bypass_cache: bool = False) -> dict[str, Any]:
     enrollment_no = enrollment_no.strip().upper()
     cache_key = f"results:{enrollment_no}"
 
@@ -896,9 +1017,7 @@ def get_student_results(
         DB_ADAPTER.release_connection(conn)
 
 
-def log_query_audit(
-    enrollment_no: str, query_type: str, duration_ms: float, cache_hit: bool
-) -> None:
+def log_query_audit(enrollment_no: str, query_type: str, duration_ms: float, cache_hit: bool) -> None:
     try:
         conn = get_db_connection()
         try:
@@ -916,7 +1035,7 @@ def log_query_audit(
         pass
 
 
-def get_query_logs(limit: int = 15) -> List[Dict[str, Any]]:
+def get_query_logs(limit: int = 15) -> list[dict[str, Any]]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -933,7 +1052,7 @@ def get_query_logs(limit: int = 15) -> List[Dict[str, Any]]:
         DB_ADAPTER.release_connection(conn)
 
 
-def get_db_stats() -> Dict[str, Any]:
+def get_db_stats() -> dict[str, Any]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -949,9 +1068,7 @@ def get_db_stats() -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) FROM query_audit_logs;")
         audit_count = cursor.fetchone()[0]
 
-        db_size_kb = (
-            round(DB_PATH.stat().st_size / 1024.0, 1) if DB_PATH.exists() else 0.0
-        )
+        db_size_kb = round(DB_PATH.stat().st_size / 1024.0, 1) if DB_PATH.exists() else 0.0
 
         return {
             "student_count": student_count,
@@ -967,7 +1084,7 @@ def get_db_stats() -> Dict[str, Any]:
         DB_ADAPTER.release_connection(conn)
 
 
-def run_db_stress_benchmark(num_queries: int = 60) -> Dict[str, Any]:
+def run_db_stress_benchmark(num_queries: int = 60) -> dict[str, Any]:
     students = get_all_students(limit=30)
     if not students:
         return {"error": "No students available to benchmark. Seed the database first."}
@@ -988,17 +1105,24 @@ def run_db_stress_benchmark(num_queries: int = 60) -> Dict[str, Any]:
     return {
         "num_queries": len(cold_latencies) + len(cached_latencies),
         "cold_avg_ms": round(float(sum(cold_latencies) / len(cold_latencies)), 3) if cold_latencies else 0.0,
-        "cold_p95_ms": round(float(sorted(cold_latencies)[int(len(cold_latencies) * 0.95)]), 3) if cold_latencies else 0.0,
-        "cached_avg_ms": round(float(sum(cached_latencies) / len(cached_latencies)), 3) if cached_latencies else 0.0,
-        "cached_p95_ms": round(float(sorted(cached_latencies)[int(len(cached_latencies) * 0.95)]), 3) if cached_latencies else 0.0,
+        "cold_p95_ms": round(float(sorted(cold_latencies)[int(len(cold_latencies) * 0.95)]), 3)
+        if cold_latencies
+        else 0.0,
+        "cached_avg_ms": round(float(sum(cached_latencies) / len(cached_latencies)), 3)
+        if cached_latencies
+        else 0.0,
+        "cached_p95_ms": round(float(sorted(cached_latencies)[int(len(cached_latencies) * 0.95)]), 3)
+        if cached_latencies
+        else 0.0,
         "speedup_factor": round(
             (sum(cold_latencies) / len(cold_latencies))
             / max(sum(cached_latencies) / len(cached_latencies), 0.0001),
             1,
-        ) if cold_latencies and cached_latencies else 1.0,
+        )
+        if cold_latencies and cached_latencies
+        else 1.0,
     }
 
 
 # Auto-initialize on import
 init_db()
-

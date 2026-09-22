@@ -2,7 +2,7 @@
 
 **Week 1 deliverable: COMPLETE.** Official freeze is `../Module1_Data/` (`master_clean.csv`, `data_dictionary.csv`, `train.csv`, `validation.csv`, `test.csv`). Do not reclean the master table.
 
-This folder is Team 1’s working directory / research log.  
+This folder is Team 1’s working directory / research log.
 **Team 2 should take the package in `../Module1_Data/`**, not this whole tree.
 
 ---
@@ -48,7 +48,7 @@ See `problem_definition.md` and `data_dictionary.md`.
    handoff
 ```
 
-We did **not** start by cleaning every candidate.  
+We did **not** start by cleaning every candidate.
 We did **not** emit `train.csv` / `val.csv` / `test.csv`.
 
 ---
@@ -89,9 +89,9 @@ Nothing in the seven-candidate set joins those families.
 
 So the master table is:
 
-**real NASA request intensity (rank-preserving, scaled to ERP user counts)**  
-→ documented M/M/c + resource model  
-→ CPU, RAM, network, latency, errors  
+**real NASA request intensity (rank-preserving, scaled to ERP user counts)**
+→ documented M/M/c + resource model
+→ CPU, RAM, network, latency, errors
 → `safe_capacity` from SLA, `risk_level` from utilization.
 
 This is **not** a production ERP dump and we do not claim it is. It is the only honest way to give Team 2 a table that actually contains the relationship Module 1 needs to learn.

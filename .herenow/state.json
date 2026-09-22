@@ -1,0 +1,19 @@
+{
+  "publishes": {
+    "misty-hollow-mf55": {
+      "siteUrl": "https://misty-hollow-mf55.here.now/",
+      "versionId": "01M1YKZGV1X56BNFRFGWWHNNNK",
+      "path": "/home/pratay-karali/Desktop/portalpulse/website"
+    },
+    "stellar-virtue-btfq": {
+      "siteUrl": "https://stellar-virtue-btfq.here.now/",
+      "versionId": "01M23K2WJ5H6WYT18ZPQNMX5ER",
+      "path": "/home/pratay-karali/Desktop/portalpulse/website"
+    },
+    "stellar-mosaic-xf62": {
+      "siteUrl": "https://stellar-mosaic-xf62.here.now/",
+      "versionId": "01M23SRRG5FTQC4BVTRDAR65VX",
+      "path": "/home/pratay-karali/Desktop/portalpulse/website"
+    }
+  }
+}

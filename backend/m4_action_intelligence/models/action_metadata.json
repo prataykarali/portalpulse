@@ -1,0 +1,42 @@
+{
+  "model_architecture": "ActionPolicyMLP",
+  "input_dim": 13,
+  "output_dim": 11,
+  "device": "cuda",
+  "parameter_count": 77835,
+  "test_accuracy": 0.9455,
+  "macro_f1": 0.9438,
+  "latency_ms": {
+    "p50": 0.528,
+    "p95": 0.588,
+    "p99": 0.623
+  },
+  "features": [
+    "cpu_percent",
+    "ram_percent",
+    "requests_per_sec",
+    "response_time",
+    "error_rate",
+    "future_rps_5m",
+    "future_cpu_5m",
+    "future_latency_5m",
+    "anomaly_score",
+    "rca_confidence",
+    "db_connections",
+    "queue_length",
+    "service_instances"
+  ],
+  "actions": [
+    "NO_OP",
+    "SCALE_OUT_WORKERS",
+    "SCALE_IN_WORKERS",
+    "ACTIVATE_RATE_LIMIT",
+    "INCREASE_DB_POOL",
+    "PURGE_REDIS_CACHE",
+    "DRAIN_REQUEST_QUEUE",
+    "ENGAGE_CIRCUIT_BREAKER",
+    "RESTART_DEGRADED_PODS",
+    "DIVERT_READS_TO_REPLICA",
+    "ENABLE_WAITING_ROOM"
+  ]
+}
