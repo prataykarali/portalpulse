@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: portalpulse-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: ALLOWED_ORIGINS
+        value: "https://stellar-mosaic-xf62.here.now,https://misty-hollow-mf55.here.now,https://stellar-virtue-btfq.here.now"
+      - key: PYTHONUNBUFFERED
+        value: "1"
