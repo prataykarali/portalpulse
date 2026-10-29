@@ -44,6 +44,7 @@ logger = logging.getLogger("portalpulse.traffic_controller")
 
 DEMO_MAX_WORKERS = 6
 DEMO_MAX_REQUESTS_PER_SECOND = 12.0
+DEMO_WAVE_SECONDS = 3.5
 DEMO_MAX_RUNTIME_SECONDS = 100.0
 DEMO_START_TEMPERATURE_C = 85.0
 DEMO_STOP_TEMPERATURE_C = 88.0
@@ -58,6 +59,19 @@ def cpu_package_temperature_c() -> Optional[float]:
         return float(package) if package is not None else None
     except (ImportError, OSError, ValueError, AttributeError):
         return None
+
+
+def demo_wave_request_rate(phase: "TrafficPhase", wave_index: int, sample: float) -> float:
+    """Alternate measured request bursts and lulls without raising the demo cap."""
+    sample = max(0.0, min(1.0, sample))
+    if phase in (TrafficPhase.BASELINE, TrafficPhase.NORMAL):
+        low, high = (1.2, 2.3), (3.7, 5.4)
+    elif phase in (TrafficPhase.RAMP, TrafficPhase.CONTROLLED_RECOVERY, TrafficPhase.SUSTAINED_LOAD):
+        low, high = (2.0, 3.8), (6.8, 9.5)
+    else:
+        low, high = (2.5, 4.5), (9.0, DEMO_MAX_REQUESTS_PER_SECOND)
+    floor, ceiling = high if wave_index % 2 else low
+    return min(DEMO_MAX_REQUESTS_PER_SECOND, floor + (ceiling - floor) * sample)
 
 
 # ===========================================================================
@@ -487,6 +501,9 @@ class TrafficController:
         self.arrival_factor: float = 1.0
         self._wave_target: float = 1.0
         self._last_wave_at: float = 0.0
+        self._wave_index: int = 0
+        self._demo_pace_rps: float = DEMO_MAX_REQUESTS_PER_SECOND
+        self._demo_demand_factor: float = 1.0
         self._last_thermal_check: float = 0.0
         self.stop_reason: Optional[str] = None
         self._rate_lock = threading.Lock()
@@ -564,6 +581,9 @@ class TrafficController:
         self.arrival_factor = 1.0
         self._wave_target = 1.0
         self._last_wave_at = 0.0
+        self._wave_index = 0
+        self._demo_pace_rps = DEMO_MAX_REQUESTS_PER_SECOND
+        self._demo_demand_factor = 1.0
         self._last_thermal_check = 0.0
         self._next_request_at = 0.0
         self.stop_reason = None
@@ -708,24 +728,30 @@ class TrafficController:
             phase_duration = self.get_phase_duration()
             target_vus = self.get_phase_target_vus()
 
-            # Smoothly interpolate current_vus towards target_vus
-            if self.current_vus < target_vus:
-                step = max(5, int((target_vus - self.current_vus) * 0.25))
-                self.current_vus = min(target_vus, self.current_vus + step)
-            elif self.current_vus > target_vus:
-                step = max(5, int((self.current_vus - target_vus) * 0.25))
-                self.current_vus = max(target_vus, self.current_vus - step)
-
-            # Ensure proper number of real worker tasks are active
-            # Demand waves alter the number and pace of real HTTP workers.
-            # The UI only charts transactions observed after those requests run.
-            if now - self._last_wave_at >= 2.0:
-                spread = 0.22 if self.current_phase in (TrafficPhase.BASELINE, TrafficPhase.NORMAL) else 0.38
-                self._wave_target = max(0.55, min(1.48, random.gauss(1.0, spread)))
+            # Scenario crowd and actual capped request pacing share an arrival
+            # wave. Virtual users remain a conceptual scale, not real clients.
+            if now - self._last_wave_at >= DEMO_WAVE_SECONDS:
+                self._wave_index += 1
+                if os.getenv("PORTALPULSE_DEMO_MODE") == "1":
+                    self._wave_target = random.uniform(1.1, 1.5) if self._wave_index % 2 else random.uniform(0.45, 0.65)
+                    self._demo_pace_rps = demo_wave_request_rate(self.current_phase, self._wave_index, random.random())
+                    self._demo_demand_factor = random.uniform(0.98, 1.16) if self._wave_index % 2 else random.uniform(0.58, 0.82)
+                else:
+                    spread = 0.22 if self.current_phase in (TrafficPhase.BASELINE, TrafficPhase.NORMAL) else 0.38
+                    self._wave_target = max(0.55, min(1.48, random.gauss(1.0, spread)))
                 self._last_wave_at = now
-            self.arrival_factor += (self._wave_target - self.arrival_factor) * 0.38
+            demand_target = round(target_vus * self._demo_demand_factor) if os.getenv("PORTALPULSE_DEMO_MODE") == "1" else target_vus
+            if self.current_vus < demand_target:
+                step = max(5, int((demand_target - self.current_vus) * 0.35))
+                self.current_vus = min(demand_target, self.current_vus + step)
+            elif self.current_vus > demand_target:
+                step = max(5, int((self.current_vus - demand_target) * 0.35))
+                self.current_vus = max(demand_target, self.current_vus - step)
+
+            # The UI charts only transactions actually observed from workers.
+            self.arrival_factor += (self._wave_target - self.arrival_factor) * 0.65
             worker_cap = DEMO_MAX_WORKERS if os.getenv("PORTALPULSE_DEMO_MODE") == "1" else 64
-            desired_workers = max(2, min(worker_cap, round(self.get_phase_workers() * self.arrival_factor)))
+            desired_workers = max(1, min(worker_cap, round(self.get_phase_workers() * self.arrival_factor)))
             await self._adjust_workers(desired_workers)
 
             # Compute sliding-window statistics
@@ -847,7 +873,7 @@ class TrafficController:
                     if os.getenv("PORTALPULSE_DEMO_MODE") == "1":
                         with self._rate_lock:
                             slot = max(time.monotonic(), self._next_request_at)
-                            self._next_request_at = slot + 1.0 / DEMO_MAX_REQUESTS_PER_SECOND
+                            self._next_request_at = slot + 1.0 / self._demo_pace_rps
                         await asyncio.sleep(max(0.0, slot - time.monotonic()))
                         if not self.is_running:
                             break

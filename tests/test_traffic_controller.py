@@ -19,9 +19,11 @@ from starlette.testclient import TestClient
 
 from backend.app import app
 from backend.simulation.traffic_controller import (
+    DEMO_MAX_REQUESTS_PER_SECOND,
     TRAFFIC_CONTROLLER,
     TrafficController,
     TrafficPhase,
+    demo_wave_request_rate,
 )
 
 
@@ -228,3 +230,11 @@ def test_stop_waits_until_generated_workers_exit(monkeypatch):
         assert controller.stop_reason == "MANUAL_STOP"
 
     asyncio.run(scenario())
+
+
+def test_demo_waves_have_clear_lulls_without_exceeding_request_cap():
+    for phase in TrafficPhase:
+        lull = demo_wave_request_rate(phase, 2, 0.5)
+        burst = demo_wave_request_rate(phase, 3, 0.5)
+        assert 0 < lull < burst <= DEMO_MAX_REQUESTS_PER_SECOND
+        assert demo_wave_request_rate(phase, 3, 99) <= DEMO_MAX_REQUESTS_PER_SECOND
