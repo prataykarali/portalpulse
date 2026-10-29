@@ -153,8 +153,12 @@ class NirantarAdapter(PortalAdapter):
 
         cpu = min(100.0, max(2.5, 8.0 + (active_u / max(1, pods * 500)) * 60.0))
         lat = max(1.0, t_data.get("avg_latency_ms", 12.0))
-        if NIRANTAR_INFRA_STATE.get("waiting_room_enabled"):
+        if NIRANTAR_SESSION_TRACKER.waiting_room.enabled:
             lat = min(lat, 85.0)
+        recent_errors = NIRANTAR_SESSION_TRACKER.get_recent_error_rates()
+        failure_pct = float(recent_errors.get("rate_5xx_pct", 0.0))
+        limit_pct = float(recent_errors.get("rate_429_pct", 0.0))
+        error_rate = min(1.0, (failure_pct + limit_pct) / 100.0)
 
         return UniversalTelemetry(
             portal_id=self.portal_id,
@@ -164,11 +168,11 @@ class NirantarAdapter(PortalAdapter):
             cpu_percent=round(cpu, 1),
             ram_percent=round(min(100.0, 30.0 + active_u * 0.015), 1),
             latency_ms=round(lat, 1),
-            throughput=float(rps),
-            error_rate=0.0,
-            http_5xx=0.0,
+            throughput=round(float(rps) * (1.0 - error_rate), 2),
+            error_rate=error_rate,
+            http_5xx=failure_pct,
             db_latency_ms=round(max(0.5, lat * 0.4), 1),
-            db_connections=round(min(100.0, (active_u / 3000.0) * 100.0), 1),
+            db_connections=round(min(100.0, (t_data.get("in_flight_requests", 0) / max(1, NIRANTAR_INFRA_STATE.get("db_pool_size", 150))) * 100.0), 1),
             queue_length=t_data.get("waiting_room_queue_size", 0),
             service_instances=pods,
             network_in_mb=round(rps * 0.002, 3),
@@ -179,10 +183,10 @@ class NirantarAdapter(PortalAdapter):
                 "is_simulated": "true",
             },
             active_sessions=active_u,
-            concurrent_requests=int(max(1, rps)),
-            p50_latency_ms=round(lat * 0.8, 1),
-            p95_latency_ms=round(lat * 1.5, 1),
-            p99_latency_ms=round(lat * 2.2, 1),
+            concurrent_requests=int(t_data.get("in_flight_requests", 0)),
+            p50_latency_ms=round(float(t_data.get("p50_latency_ms", lat)), 1),
+            p95_latency_ms=round(float(t_data.get("p95_latency_ms", lat)), 1),
+            p99_latency_ms=round(float(t_data.get("p99_latency_ms", lat)), 1),
             db_connection_limit=100,
         )
 
@@ -193,16 +197,18 @@ class NirantarAdapter(PortalAdapter):
         self._capacity_profile = profile
 
     def execute_action(self, action: str, parameters: Dict[str, Any]) -> ActionResult:
-        from backend.connectors.nirantar_bridge import NIRANTAR_INFRA_STATE
+        from backend.connectors.nirantar_bridge import NIRANTAR_INFRA_STATE, NIRANTAR_SESSION_TRACKER
         start_t = time.monotonic()
         prev_state = dict(NIRANTAR_INFRA_STATE)
 
         if action == "ENABLE_WAITING_ROOM":
             NIRANTAR_INFRA_STATE["waiting_room_enabled"] = True
             NIRANTAR_INFRA_STATE["waiting_room_limit"] = parameters.get("max_admitted_sessions", 2000)
+            NIRANTAR_SESSION_TRACKER.waiting_room.enable(capacity=int(NIRANTAR_INFRA_STATE["waiting_room_limit"]))
             status = "SUCCESS"
         elif action == "DISABLE_WAITING_ROOM":
             NIRANTAR_INFRA_STATE["waiting_room_enabled"] = False
+            NIRANTAR_SESSION_TRACKER.waiting_room.disable()
             status = "SUCCESS"
         elif action == "SCALE_OUT_WORKERS":
             delta = parameters.get("replicas_delta", 2)
@@ -214,9 +220,34 @@ class NirantarAdapter(PortalAdapter):
             status = "SUCCESS"
         elif action == "ENABLE_CACHE":
             NIRANTAR_INFRA_STATE["cache_enabled"] = True
+            NIRANTAR_INFRA_STATE["redis_cache_warmed"] = True
             status = "SUCCESS"
         elif action == "PURGE_CACHE":
             NIRANTAR_INFRA_STATE["cache_enabled"] = False
+            status = "SUCCESS"
+        elif action == "ACTIVATE_RATE_LIMIT":
+            NIRANTAR_SESSION_TRACKER.rate_limiter.set_rate_limit(float(parameters.get("rate_limit_rps", 8)))
+            status = "SUCCESS"
+        elif action == "DIVERT_READS_TO_REPLICA":
+            NIRANTAR_INFRA_STATE["reads_diverted_to_replica"] = True
+            status = "SUCCESS"
+        elif action == "ENGAGE_CIRCUIT_BREAKER":
+            NIRANTAR_INFRA_STATE["circuit_breaker_active"] = True
+            status = "SUCCESS"
+        elif action == "INCREASE_DB_POOL":
+            NIRANTAR_INFRA_STATE["db_pool_size"] = min(300, NIRANTAR_INFRA_STATE["db_pool_size"] + int(parameters.get("delta_connections", 50)))
+            NIRANTAR_INFRA_STATE["sim_latency_ms"] = 0
+            status = "SUCCESS"
+        elif action == "PURGE_REDIS_CACHE":
+            NIRANTAR_INFRA_STATE["redis_cache_warmed"] = True
+            status = "SUCCESS"
+        elif action == "DRAIN_REQUEST_QUEUE":
+            NIRANTAR_INFRA_STATE["sim_latency_ms"] = 0
+            status = "SUCCESS"
+        elif action == "RESTART_DEGRADED_PODS":
+            NIRANTAR_INFRA_STATE["sim_fault"] = "NONE"
+            NIRANTAR_INFRA_STATE["sim_latency_ms"] = 0
+            NIRANTAR_INFRA_STATE["pods"] = min(16, NIRANTAR_INFRA_STATE["pods"] + 1)
             status = "SUCCESS"
         else:
             status = "UNKNOWN_ACTION"

@@ -2,24 +2,31 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Nirantar · PortalPulse overlay</title>
-  <link rel="stylesheet" href="/static/nirantar-live.css?v=20261029-2">
+  <title>Nirantar × PortalPulse · Live simulation</title>
+  <link rel="stylesheet" href="/static/nirantar-live.css?v=20261029-4">
 </head>
 <body>
-  <iframe id="nirantar-site" title="Live Nirantar website" referrerpolicy="no-referrer"></iframe>
+  <iframe id="nirantar-site" title="Deployed Nirantar website" referrerpolicy="no-referrer"></iframe>
   <header class="bridge-bar">
     <img src="/static/assets/portalpulse-guide-robot.svg" alt="PulseBot">
-    <div><b>Nirantar × PortalPulse</b><small>Live Nirantar site with PortalPulse scenario cards</small></div>
-    <span id="bridge-state">Connecting to PortalPulse…</span>
-    <button id="run-linked-demo" type="button">▶ Run live story</button>
-    <button id="stop-linked-demo" type="button">■ Stop load</button>
-    <button id="preview-notice">Preview Tatkal notice</button>
-    <a id="direct-site" href="https://bronze-tinsel-n8pb.here.now/">Open site directly ↗</a>
+    <div class="brand"><b>Nirantar × PortalPulse</b><small>Deployed Nirantar beside a measured local Nirantar bridge simulation</small></div>
+    <span id="bridge-state">Connecting…</span>
+    <button id="run-linked-demo" type="button">▶ Run simulation</button>
+    <button id="stop-linked-demo" type="button" disabled>■ Stop · Enter</button>
+    <button id="preview-notice" type="button">Preview Tatkal notice</button>
+    <a id="direct-site" href="https://bronze-tinsel-n8pb.here.now/" target="_blank" rel="noopener">Open Nirantar ↗</a>
     <a href="/website#guide">← PortalPulse</a>
   </header>
-  <aside id="bridge-note" aria-live="polite">The site below is Nirantar. Scenario cards mirror measured activity and M7 actions on the separate IEMCRP demo portal; they do not mean Nirantar traffic or infrastructure changed. Native Nirantar notices remain inside its site.</aside>
-  <div id="pulse-readout" aria-live="polite"><span>Demo phase <b id="pulse-phase">Idle</b></span><span>Scenario users <b id="pulse-users">0</b></span><span>Measured requests <b id="pulse-rps">0/s</b></span><span>Failures <b id="pulse-errors">0%</b></span></div>
+  <aside id="model-panel" aria-label="Live Nirantar simulation graphs">
+    <div class="panel-heading"><div><strong>Live control room</strong><small>Local Nirantar bridge · measured requests + model outputs</small></div><button id="toggle-panel" type="button" aria-label="Toggle graph panel">−</button></div>
+    <div id="graph-content">
+      <div id="pulse-readout"><span>Phase <b id="pulse-phase">Idle</b></span><span>Requests <b id="pulse-rps">0/s</b></span><span>Failures <b id="pulse-errors">0%</b></span></div>
+      <div id="graph-grid"></div>
+      <div class="model-result"><span>M4 likely cause</span><b id="model-cause">Waiting for a cycle</b><span>M5 proposal → M6 safety → M7 result</span><b id="model-action">Waiting for a cycle</b></div>
+      <p class="panel-note">Graph lines use live local request measurements. Forecast, anomaly, and policy values come from PortalPulse model cycles. This simulation does not control the separately deployed Nirantar site.</p>
+    </div>
+  </aside>
   <div id="notice-stack" aria-live="polite"></div>
-  <script src="/static/nirantar-live.js?v=20261029-2"></script>
+  <script src="/static/nirantar-live.js?v=20261029-4"></script>
 </body>
 </html>

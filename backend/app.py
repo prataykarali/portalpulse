@@ -44,6 +44,7 @@ from backend.m8_chaos_lab.routes import router as m8_chaos_router
 from backend.m9_mlops_drift.routes import router as m9_mlops_router
 from backend.simulation.routes import router as simulation_router
 from backend.simulation.live_demo import router as live_demo_router
+from backend.simulation.nirantar_simulation import NIRANTAR_SIMULATION, router as nirantar_simulation_router
 from backend.portals.nirantar_fair_access_routes import router as nirantar_fair_access_router
 from backend.simulation.traffic_controller import (
     TRAFFIC_CONTROLLER,
@@ -127,6 +128,7 @@ async def lifespan(app: FastAPI):
     await CONTROL_LOOP.start()
     yield
     await TRAFFIC_CONTROLLER.stop()
+    await NIRANTAR_SIMULATION.stop()
     await CONTROL_LOOP.stop()
     await STREAM_BROADCASTER.shutdown()
     bg_task.cancel()
@@ -229,6 +231,7 @@ app.include_router(stream_router)
 app.include_router(stream_alias_router)
 app.include_router(simulation_router)
 app.include_router(live_demo_router)
+app.include_router(nirantar_simulation_router)
 app.include_router(nirantar_fair_access_router)
 app.include_router(m1_router)
 app.include_router(m2_router)

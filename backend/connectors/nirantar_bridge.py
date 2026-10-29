@@ -46,6 +46,8 @@ NIRANTAR_INFRA_STATE = {
     "reads_diverted_to_replica": False,
     "redis_cache_warmed": True,
     "circuit_breaker_active": False,
+    "sim_fault": "NONE",
+    "sim_latency_ms": 0,
 }
 
 
@@ -81,8 +83,15 @@ def create_nirantar_app() -> FastAPI:
         date: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Search available trains across Indian Railways network."""
+        if NIRANTAR_INFRA_STATE["sim_fault"] == "GATEWAY" and NIRANTAR_INFRA_STATE["circuit_breaker_active"]:
+            return {"status": "fallback", "count": 0, "trains": [], "served_from_cache": True}
+        if NIRANTAR_INFRA_STATE["sim_fault"] == "GATEWAY":
+            return JSONResponse(status_code=503, content={"error": "Simulated Nirantar gateway failure"})
         # Simulated DB delay modulated by pool contention & replica diversion
         base_delay = 0.005 if NIRANTAR_INFRA_STATE["reads_diverted_to_replica"] else 0.020
+        base_delay += NIRANTAR_INFRA_STATE["sim_latency_ms"] / 1000.0
+        if NIRANTAR_INFRA_STATE["redis_cache_warmed"]:
+            base_delay = max(0.003, base_delay - 0.010)
         # Under high in-flight concurrency, DB latency increases unless waiting room throttles it
         in_flight = NIRANTAR_SESSION_TRACKER.get_in_flight_requests()
         if in_flight > 20 and not NIRANTAR_INFRA_STATE["reads_diverted_to_replica"]:

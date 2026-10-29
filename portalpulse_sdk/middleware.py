@@ -390,6 +390,18 @@ class ActiveSessionTracker:
                 "total_requests_recorded": self._total_requests,
             }
 
+    def get_recent_error_rates(self, window_sec: float = 3.0) -> Dict[str, float]:
+        """Measured HTTP error percentages over a short control-cycle window."""
+        cutoff = time.time() - window_sec
+        with self.lock:
+            recent = [item for item in self._response_history if item[0] >= cutoff]
+        if not recent:
+            return {"rate_429_pct": 0.0, "rate_5xx_pct": 0.0}
+        return {
+            "rate_429_pct": round(100 * sum(item[1] == 429 for item in recent) / len(recent), 1),
+            "rate_5xx_pct": round(100 * sum(item[1] >= 500 for item in recent) / len(recent), 1),
+        }
+
     def get_telemetry_dict(self) -> Dict[str, Any]:
         """Aggregate live telemetry metrics into a dictionary for adapters and observers."""
         p50, p95, p99 = self.get_latency_percentiles()

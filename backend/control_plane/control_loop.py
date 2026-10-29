@@ -96,7 +96,8 @@ class ContinuousControlLoop:
         while self.running:
             if os.getenv("PORTALPULSE_DEMO_MODE") == "1":
                 from backend.simulation.traffic_controller import TRAFFIC_CONTROLLER
-                if not TRAFFIC_CONTROLLER.is_running or TRAFFIC_CONTROLLER.is_paused:
+                from backend.simulation.nirantar_simulation import NIRANTAR_SIMULATION
+                if not NIRANTAR_SIMULATION.running and (not TRAFFIC_CONTROLLER.is_running or TRAFFIC_CONTROLLER.is_paused):
                     self.phase = "IDLE"
                     self.next_cycle = None
                     await asyncio.sleep(1.0)
@@ -105,7 +106,7 @@ class ContinuousControlLoop:
             self.next_cycle = (now_dt + timedelta(seconds=self.interval_seconds)).isoformat()
             try:
                 self.step(
-                    portal_id="college_portal" if os.getenv("PORTALPULSE_DEMO_MODE") == "1" else "nirantar",
+                    portal_id=("nirantar" if NIRANTAR_SIMULATION.running else "college_portal") if os.getenv("PORTALPULSE_DEMO_MODE") == "1" else "nirantar",
                     auto_approve=os.getenv("PORTALPULSE_DEMO_MODE") == "1",
                 )
             except asyncio.CancelledError:
