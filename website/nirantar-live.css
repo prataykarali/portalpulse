@@ -10,5 +10,5 @@
 .notice.action img{float:left;width:51px;height:55px;object-fit:contain;margin:0 9px 4px -4px;animation:bob 2.6s ease-in-out infinite}
 .bridge-bar button:disabled{opacity:.55;cursor:not-allowed}
 #stop-linked-demo{background:#fff2f4;color:#bd3153;border:1px solid #f4bac5}
-@media(max-width:760px){#bridge-note{bottom:6px}#pulse-readout{top:155px;right:7px;width:calc(100vw - 14px);padding:6px}#pulse-readout span{font-size:8px}#pulse-readout b{font-size:10px}#notice-stack{top:219px}}
+@media(max-width:760px){#bridge-note{bottom:6px}#pulse-readout{top:155px;right:7px;width:calc(100vw - 14px);padding:6px}#pulse-readout span{font-size:8px}#pulse-readout b{font-size:10px}#notice-stack{top:219px;width:min(390px,calc(100vw - 14px))}}
 @media(prefers-reduced-motion:reduce){.notice.action img{animation:none}}

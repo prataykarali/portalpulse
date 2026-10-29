@@ -74,10 +74,12 @@
 
   async function refresh() {
     try {
-      const response = await fetch('/api/v1/live-demo/snapshot');
+      const response = await fetch('/api/v1/traffic/status');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const snapshot = await response.json();
-      setReadout(snapshot.traffic);
+      const traffic = await response.json();
+      const wasRunning = runActive;
+      setReadout(traffic);
+      if (wasRunning && !runActive) card({kind: 'action', source: 'PULSEBOT · SCENARIO ENDED', title: 'Generated requests have stopped', detail: 'The bounded demo has ended. Earlier measured graphs remain available on PortalPulse Traffic and AI Models.', footer: `Stop reason: ${traffic.stop_reason || 'scenario complete'}`, id: 'demo-end'});
     } catch {
       $('bridge-state').textContent = 'PortalPulse connection unavailable';
     }
@@ -93,6 +95,7 @@
         throw new Error(error.detail || `HTTP ${response.status}`);
       }
       lastPhase = '';
+      seen.delete('demo-end');
       card({kind: 'action', source: 'PULSEBOT · SCENARIO STARTED', title: 'Watch the crowd and the response', detail: 'PortalPulse has started the capped IEMCRP demo. The cards here will follow its measured traffic, model decisions, M7 actions, and recovery.', footer: 'Maximum 6 workers · 12 real requests/s · automatic stop within 100 seconds'});
       await refresh();
     } catch (error) {
@@ -142,7 +145,9 @@
     } catch (error) { console.error(error); }
   });
   stream.addEventListener('demo_reset', () => {lastPhase = ''; seen.clear(); $('notice-stack').replaceChildren(); refresh();});
-  stream.addEventListener('demo_stopped', () => {runActive = false; refresh(); card({kind: 'action', source: 'PULSEBOT · LOAD STOPPED', title: 'Generated requests have stopped', detail: 'The scenario workers are stopped. Earlier graph samples remain available on PortalPulse Traffic and AI Models.', footer: 'No new demo load is being generated.'});});
+  stream.addEventListener('demo_stopped', () => {runActive = false; refresh(); card({kind: 'action', source: 'PULSEBOT · LOAD STOPPED', title: 'Generated requests have stopped', detail: 'The scenario workers are stopped. Earlier graph samples remain available on PortalPulse Traffic and AI Models.', footer: 'No new demo load is being generated.', id: 'demo-end'});});
   stream.onerror = () => {$('bridge-state').textContent = 'Reconnecting to PortalPulse…';};
   refresh();
+  setInterval(() => {if (!document.hidden) refresh();}, 5000);
+  document.addEventListener('visibilitychange', () => {if (!document.hidden) refresh();});
 })();
