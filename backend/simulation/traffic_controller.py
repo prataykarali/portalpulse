@@ -42,10 +42,9 @@ from backend.portals.iemcrp_app import DB_POOL, IEMCRP_INFRA_STATE, iemcrp_app
 
 logger = logging.getLogger("portalpulse.traffic_controller")
 
-DEMO_MAX_WORKERS = 6
-DEMO_MAX_REQUESTS_PER_SECOND = 12.0
+DEMO_MAX_WORKERS = 4
+DEMO_MAX_REQUESTS_PER_SECOND = 8.0
 DEMO_WAVE_SECONDS = 3.5
-DEMO_MAX_RUNTIME_SECONDS = 100.0
 DEMO_START_TEMPERATURE_C = 85.0
 DEMO_STOP_TEMPERATURE_C = 88.0
 
@@ -505,6 +504,7 @@ class TrafficController:
         self._demo_pace_rps: float = DEMO_MAX_REQUESTS_PER_SECOND
         self._demo_demand_factor: float = 1.0
         self._last_thermal_check: float = 0.0
+        self._paused_at: Optional[float] = None
         self.stop_reason: Optional[str] = None
         self._rate_lock = threading.Lock()
         self._next_request_at: float = 0.0
@@ -578,6 +578,7 @@ class TrafficController:
         self.phase_start_time = now
         self.is_running = True
         self.is_paused = False
+        self._paused_at = None
         self.arrival_factor = 1.0
         self._wave_target = 1.0
         self._last_wave_at = 0.0
@@ -604,6 +605,7 @@ class TrafficController:
         """Halt all traffic generation cleanly."""
         self.is_running = False
         self.is_paused = False
+        self._paused_at = None
 
         if self._supervisor_task and not self._supervisor_task.done():
             self._supervisor_task.cancel()
@@ -634,6 +636,8 @@ class TrafficController:
         """Temporarily pause traffic generation without resetting phase."""
         if not self.is_running:
             return {"status": "NOT_RUNNING"}
+        if not self.is_paused:
+            self._paused_at = time.monotonic()
         self.is_paused = True
         logger.info("[TRAFFIC_CONTROLLER] Traffic paused.")
         return {"status": "PAUSED", "phase": self.current_phase.value}
@@ -642,6 +646,9 @@ class TrafficController:
         """Resume paused traffic generation."""
         if not self.is_running:
             return {"status": "NOT_RUNNING"}
+        if self.is_paused and self._paused_at is not None:
+            self.phase_start_time += time.monotonic() - self._paused_at
+        self._paused_at = None
         self.is_paused = False
         logger.info("[TRAFFIC_CONTROLLER] Traffic resumed.")
         return {"status": "RESUMED", "phase": self.current_phase.value}
@@ -702,13 +709,6 @@ class TrafficController:
     async def _supervisor_loop(self) -> None:
         """Orchestrates phase progressions, smoothly ramps VUs, and tracks window stats."""
         while self.is_running:
-            if os.getenv("PORTALPULSE_DEMO_MODE") == "1" and time.monotonic() - self.scenario_start_time >= DEMO_MAX_RUNTIME_SECONDS:
-                self.is_running = False
-                self.stop_reason = "TIME_LIMIT"
-                await self._adjust_workers(0)
-                self._clear_demo_faults()
-                logger.info("[TRAFFIC_CONTROLLER] Local demo reached its 100-second safety limit.")
-                break
             if os.getenv("PORTALPULSE_DEMO_MODE") == "1" and time.monotonic() - self._last_thermal_check >= 2.0:
                 self._last_thermal_check = time.monotonic()
                 temperature = cpu_package_temperature_c()
@@ -798,6 +798,8 @@ class TrafficController:
         if self.current_phase_idx >= len(self.phase_sequence):
             if self.loop_continuously:
                 self.current_phase_idx = 0
+                if self.scenario_name == "IEMCRP_RESULT_DAY_LIVE_DEMO":
+                    self._clear_demo_faults()
             else:
                 self.is_running = False
                 self.stop_reason = "SCENARIO_COMPLETE"
@@ -877,6 +879,8 @@ class TrafficController:
                         await asyncio.sleep(max(0.0, slot - time.monotonic()))
                         if not self.is_running:
                             break
+                        if self.is_paused:
+                            continue
                     self.in_flight_requests += 1
                     try:
                         await persona_cls.execute(client, self.record_transaction)

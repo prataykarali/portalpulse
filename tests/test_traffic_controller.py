@@ -19,12 +19,29 @@ from starlette.testclient import TestClient
 
 from backend.app import app
 from backend.simulation.traffic_controller import (
+    DEMO_PHASE_SEQUENCE,
     DEMO_MAX_REQUESTS_PER_SECOND,
     TRAFFIC_CONTROLLER,
     TrafficController,
     TrafficPhase,
     demo_wave_request_rate,
 )
+
+
+def test_demo_phase_wrap_stays_running_and_clears_faults(monkeypatch):
+    monkeypatch.setenv("PORTALPULSE_DEMO_MODE", "1")
+    controller = TrafficController()
+    controller.scenario_name = "IEMCRP_RESULT_DAY_LIVE_DEMO"
+    controller.phase_sequence = DEMO_PHASE_SEQUENCE
+    controller.current_phase_idx = len(DEMO_PHASE_SEQUENCE) - 1
+    controller.is_running = True
+    controller.loop_continuously = True
+    cleared = []
+    monkeypatch.setattr(controller, "_clear_demo_faults", lambda: cleared.append(True))
+    asyncio.run(controller._advance_to_next_phase())
+    assert controller.is_running
+    assert controller.current_phase is TrafficPhase.BASELINE
+    assert cleared == [True]
 
 
 @pytest.fixture(autouse=True)

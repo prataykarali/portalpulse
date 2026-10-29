@@ -63,6 +63,7 @@ class WarningItem:
     m6_safety: str = "GUARDRAIL PASS"
     m7_actuating: str = "ACTUATING"
     is_test_mode: bool = False
+    portal_id: str = "college_portal"
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -224,9 +225,10 @@ class WarningEngine:
         }
 
         for w_id, (is_active, metric_str) in evaluations.items():
+            active_key = f"{portal_id}:{w_id}"
             spec = WARNING_SPECS[w_id]
             if is_active:
-                if w_id not in self._active_warnings:
+                if active_key not in self._active_warnings:
                     item = WarningItem(
                         id=w_id,
                         title=spec["title"],
@@ -254,13 +256,14 @@ class WarningEngine:
                         m5_action=cycle.recommended_action,
                         m6_safety=str(getattr(cycle, "safety_decision", "UNKNOWN")),
                         m7_actuating=cycle.actuation_status,
+                        portal_id=portal_id,
                     )
-                    self._active_warnings[w_id] = item
+                    self._active_warnings[active_key] = item
                     self._history.append(item)
                     new_warnings.append(item)
             else:
-                if w_id in self._active_warnings:
-                    old_item = self._active_warnings.pop(w_id)
+                if active_key in self._active_warnings:
+                    old_item = self._active_warnings.pop(active_key)
                     rec = {
                         "id": w_id,
                         "title": f"CONDITION CLEARED: {spec['title']}",
@@ -323,9 +326,13 @@ class WarningEngine:
     def get_active_warnings(self) -> List[Dict[str, Any]]:
         return [item.to_dict() for item in self._active_warnings.values()]
 
-    def reset(self) -> None:
-        self._active_warnings.clear()
-        self._history.clear()
+    def reset(self, portal_id: str | None = None) -> None:
+        if portal_id is None:
+            self._active_warnings.clear()
+            self._history.clear()
+            return
+        self._active_warnings = {key: item for key, item in self._active_warnings.items() if item.portal_id != portal_id}
+        self._history = [item for item in self._history if item.portal_id != portal_id]
 
     def get_catalog(self) -> Dict[str, Dict[str, Any]]:
         return WARNING_SPECS

@@ -74,7 +74,12 @@ def test_scenario_reset_and_actual_transactions(monkeypatch):
         assert client.post("/api/v1/live-demo/start").json()["status"] == "STARTED"
         assert client.get("/api/v1/live-demo/snapshot").json()["traffic"]["is_running"]
         assert [p.value for p in TRAFFIC_CONTROLLER.phase_sequence] == [p.value for p in DEMO_PHASE_SEQUENCE]
+        assert TRAFFIC_CONTROLLER.loop_continuously is True
+        assert client.post("/api/v1/live-demo/start").json()["status"] == "ALREADY_RUNNING"
         assert client.post("/api/v1/live-demo/trigger/result-rush").status_code == 200
+        assert client.post("/api/v1/live-demo/pause").json()["status"] == "PAUSED"
+        assert client.post("/api/v1/live-demo/trigger/database").json()["status"] == "TRIGGERED"
+        assert TRAFFIC_CONTROLLER.is_paused is False
         assert client.post("/api/v1/live-demo/pause").json()["status"] == "PAUSED"
         assert client.post("/api/v1/live-demo/resume").json()["status"] == "RESUMED"
         assert client.post("/api/v1/live-demo/stop").json()["status"] == "STOPPED"

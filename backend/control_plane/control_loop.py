@@ -105,10 +105,13 @@ class ContinuousControlLoop:
             now_dt = datetime.now(timezone.utc)
             self.next_cycle = (now_dt + timedelta(seconds=self.interval_seconds)).isoformat()
             try:
-                self.step(
-                    portal_id=("nirantar" if NIRANTAR_SIMULATION.running else "college_portal") if os.getenv("PORTALPULSE_DEMO_MODE") == "1" else "nirantar",
-                    auto_approve=os.getenv("PORTALPULSE_DEMO_MODE") == "1",
+                portals = (
+                    (["nirantar"] if NIRANTAR_SIMULATION.running else [])
+                    + (["college_portal"] if TRAFFIC_CONTROLLER.is_running and not TRAFFIC_CONTROLLER.is_paused else [])
+                    if os.getenv("PORTALPULSE_DEMO_MODE") == "1" else ["nirantar"]
                 )
+                for portal_id in portals:
+                    self.step(portal_id=portal_id, auto_approve=os.getenv("PORTALPULSE_DEMO_MODE") == "1")
             except asyncio.CancelledError:
                 break
             except Exception as e:

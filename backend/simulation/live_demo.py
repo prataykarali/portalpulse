@@ -77,9 +77,10 @@ def snapshot() -> dict[str, Any]:
 
 
 async def _start(phase: TrafficPhase = TrafficPhase.BASELINE) -> dict[str, Any]:
-    if NIRANTAR_SIMULATION.running:
-        raise HTTPException(409, "Stop the Nirantar bridge simulation before starting the IEMCRP scenario.")
     if TRAFFIC_CONTROLLER.is_running:
+        if TRAFFIC_CONTROLLER.is_paused:
+            TRAFFIC_CONTROLLER.resume()
+            return {"status": "RESUMED", "phase": TRAFFIC_CONTROLLER.current_phase.value}
         return {"status": "ALREADY_RUNNING", "phase": TRAFFIC_CONTROLLER.current_phase.value}
     restart_wait = TRAFFIC_CONTROLLER.demo_restart_wait_seconds()
     if restart_wait > 0:
@@ -93,14 +94,17 @@ async def _start(phase: TrafficPhase = TrafficPhase.BASELINE) -> dict[str, Any]:
     await TRAFFIC_CONTROLLER.stop()
     TRAFFIC_CONTROLLER.transactions.clear()
     TRAFFIC_CONTROLLER._update_sliding_stats()
-    CONTROL_LOOP.history.clear()
-    CONTROL_LOOP.cycle_id = None
-    CONTROL_LOOP.last_cycle = None
-    CONTROL_LOOP.current_action = "NO_OP"
-    CONTROL_LOOP.recovery_state = "NOMINAL"
-    WARNING_ENGINE.reset()
-    with SAFETY_GUARDRAILS.lock:
-        SAFETY_GUARDRAILS.last_executed_time.clear()
+    CONTROL_LOOP.history = type(CONTROL_LOOP.history)(
+        (cycle for cycle in CONTROL_LOOP.history if cycle.portal_id != "college_portal"), maxlen=CONTROL_LOOP.history.maxlen
+    )
+    WARNING_ENGINE.reset("college_portal")
+    if not NIRANTAR_SIMULATION.running:
+        CONTROL_LOOP.cycle_id = None
+        CONTROL_LOOP.last_cycle = None
+        CONTROL_LOOP.current_action = "NO_OP"
+        CONTROL_LOOP.recovery_state = "NOMINAL"
+        with SAFETY_GUARDRAILS.lock:
+            SAFETY_GUARDRAILS.last_executed_time.clear()
     STREAM_BROADCASTER.publish("demo_reset", {"portal_id": "college_portal"})
     DB_POOL.set_fault_pool_exhaustion(False)
     DB_POOL.set_fault_db_latency(0)
@@ -114,7 +118,7 @@ async def _start(phase: TrafficPhase = TrafficPhase.BASELINE) -> dict[str, Any]:
         }
     )
     return await TRAFFIC_CONTROLLER.start(
-        scenario="IEMCRP_RESULT_DAY_LIVE_DEMO", start_phase=phase, loop_continuously=False
+        scenario="IEMCRP_RESULT_DAY_LIVE_DEMO", start_phase=phase, loop_continuously=True
     )
 
 
@@ -145,14 +149,17 @@ async def reset() -> dict[str, Any]:
     TRAFFIC_CONTROLLER.current_phase_idx = 0
     TRAFFIC_CONTROLLER.current_vus = 0
     TRAFFIC_CONTROLLER.stop_reason = "RESET"
-    CONTROL_LOOP.history.clear()
-    CONTROL_LOOP.cycle_id = None
-    CONTROL_LOOP.last_cycle = None
-    CONTROL_LOOP.current_action = "NO_OP"
-    CONTROL_LOOP.recovery_state = "NOMINAL"
-    WARNING_ENGINE.reset()
-    with SAFETY_GUARDRAILS.lock:
-        SAFETY_GUARDRAILS.last_executed_time.clear()
+    CONTROL_LOOP.history = type(CONTROL_LOOP.history)(
+        (cycle for cycle in CONTROL_LOOP.history if cycle.portal_id != "college_portal"), maxlen=CONTROL_LOOP.history.maxlen
+    )
+    WARNING_ENGINE.reset("college_portal")
+    if not NIRANTAR_SIMULATION.running:
+        CONTROL_LOOP.cycle_id = None
+        CONTROL_LOOP.last_cycle = None
+        CONTROL_LOOP.current_action = "NO_OP"
+        CONTROL_LOOP.recovery_state = "NOMINAL"
+        with SAFETY_GUARDRAILS.lock:
+            SAFETY_GUARDRAILS.last_executed_time.clear()
     STREAM_BROADCASTER.publish("demo_reset", {"portal_id": "college_portal"})
     return {"status": "RESET"}
 
@@ -163,7 +170,7 @@ async def stop() -> dict[str, Any]:
     _require_demo()
     await TRAFFIC_CONTROLLER.stop()
     STREAM_BROADCASTER.publish("demo_stopped", {"portal_id": "college_portal"})
-    return {"status": "STOPPED", "workers": 0, "request_cap_per_sec": 12}
+    return {"status": "STOPPED", "workers": 0, "request_cap_per_sec": 8}
 
 
 @router.post("/pause")
@@ -194,6 +201,8 @@ async def trigger(scenario: str) -> dict[str, Any]:
         await _start(scenarios[scenario])
     else:
         TRAFFIC_CONTROLLER.set_scenario(phase=scenarios[scenario])
+        if TRAFFIC_CONTROLLER.is_paused:
+            TRAFFIC_CONTROLLER.resume()
     if scenario == "database":
         DB_POOL.set_fault_db_latency(450)
         DB_POOL.set_fault_pool_exhaustion(True)
