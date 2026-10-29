@@ -2,7 +2,9 @@
 
 **Document Version:** 1.0.0  
 **Effective Date:** 2026-09-21  
-**Status:** ACTIVE & ENFORCED  
+**Status:** HISTORICAL BASELINE; deployment boundary remains active
+
+**Update, 2026-10-29:** The user supplied the Nirantar source repository and requested native UI integration. A separate checkout now contains a native notice component; those source edits supersede the read-only source constraint below. The public here.now site has not been republished, and PortalPulse's existing Nirantar connector still targets a local in-process bridge. No claim of live control over the public Nirantar service follows from this document.
 
 ---
 
@@ -13,10 +15,10 @@ To ensure strict separation of concerns, zero regression risks, and architectura
 ### Non-Modification & Non-Deployment Invariants
 1. **Local Nirantar Workspace:**
    - Path: `/home/pratay-karali/Desktop/NIRANTAR`
-   - **Constraint:** **STRICT READ-ONLY / DO NOT MODIFY**. Under no circumstances will PortalPulse tools or agents write to, edit, refactor, or delete files within `/home/pratay-karali/Desktop/NIRANTAR`.
+   - **Historical constraint:** Originally read-only. The user subsequently authorized a native notification component in a separate Nirantar checkout.
 2. **Remote Deployed Endpoint:**
    - Target URL: `https://ubuntu-cedar-sqkf.here.now/`
-   - **Constraint:** **DO NOT MODIFY OR REDEPLOY**. PortalPulse must not trigger remote build scripts, redeployments, or mutations against the live deployment domain.
+   - **Current state:** No remote deployment has been changed. A new frontend publication requires a successful build and a reachable event backend.
 3. **No Frontend Source Code Import:**
    - Nirantar's frontend source tree (React, Vite, TypeScript, Tailwind components) must never be imported, copied, or bundled into PortalPulse.
 4. **Zero Mutation of Core Logic & Assets:**

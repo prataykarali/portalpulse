@@ -13,13 +13,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.5.1 \
+    && pip install --no-cache-dir -r requirements.txt
 
 # Copy application source and model artifacts
 COPY . .
-
-# Ensure portalpulse_sdk is installed in editable/package mode
-RUN pip install --no-cache-dir -e ./portalpulse_sdk
 
 EXPOSE 8000
 

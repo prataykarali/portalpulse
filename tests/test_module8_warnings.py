@@ -96,6 +96,8 @@ def test_warning_engine_telemetry_eval_and_recovery():
     assert len(warns) == 1
     assert warns[0].id == "WARN_DB_POOL_EXHAUSTION"
     assert warns[0].severity == "CRITICAL"
+    assert warns[0].m5_action == "INCREASE_DB_POOL"
+    assert warns[0].m7_actuating == "ACTUATING"
     assert "96%" in warns[0].current_result or "48" in warns[0].current_metric
     assert len(recs) == 0
     assert len(engine.get_active_warnings()) == 1
@@ -125,6 +127,9 @@ def test_warning_engine_telemetry_eval_and_recovery():
     assert recs2[0]["id"] == "WARN_DB_POOL_EXHAUSTION"
     assert recs2[0]["severity"] == "RECOVERY"
     assert recs2[0]["is_recovered"] is True
+    assert recs2[0]["title"].startswith("CONDITION CLEARED:")
+    assert recs2[0]["recommended_action"] == "NO_OP"
+    assert "no M7 action is attributed" in recs2[0]["what_portalpulse_did"]
     assert len(engine.get_active_warnings()) == 0
 
 
@@ -156,44 +161,20 @@ def test_api_warnings_trigger_test_endpoint(client):
 
 
 def test_module8_ui_modal_and_toast_in_html(client):
-    """Verify index.html contains modal with 4 cards, toast container, and developer test mode section."""
+    """The canonical website exposes live incidents and contextual action messages."""
     resp = client.get("/", headers={"accept": "text/html"})
     assert resp.status_code == 200
     html = resp.text
 
-    # Modal and elements
-    assert 'id="lrCriticalWarningModal"' in html
-    assert 'id="lrModalBadge"' in html
-    assert 'id="lrModalTitle"' in html
-    assert 'id="lrModalMetric"' in html
-    assert 'id="lrModalThreshold"' in html
-    assert 'id="lrModalState"' in html
-
-    # The 4 Required Display Sections
-    assert "WHAT HAPPENED" in html
-    assert 'id="lrModalWhatHappened"' in html
-    assert "WHY IT HAPPENED" in html
-    assert 'id="lrModalWhyHappened"' in html
-    assert "WHAT PORTALPULSE DID" in html
-    assert 'id="lrModalRca"' in html
-    assert 'id="lrModalM5"' in html
-    assert 'id="lrModalM6"' in html
-    assert 'id="lrModalM7"' in html
-    assert "CURRENT RESULT" in html
-    assert 'id="lrModalResult"' in html
-
-    # Toast Container
-    assert 'id="lrToastContainer"' in html
-
-    # Developer Test Mode Section
-    assert 'id="lrDevTestSection"' in html
-    assert "[DEV/DEMO TEST MODE]" in html
-    assert "btnTestRush" in html
-    assert "btnTestDb" in html
-    assert "btnTestWait" in html
-    assert "btnTestRate" in html
-    assert "btnTestFailover" in html
-    assert "btnTestCb" in html
+    assert 'id="drawer"' in html
+    assert 'id="incidents"' in html
+    assert 'id="toasts"' in html
+    assert 'id="coach-popup"' in html
+    assert 'id="robot-launch"' in html
+    assert 'id="tour-dialog"' in html
+    assert 'data-trigger="database"' in html
+    assert 'data-trigger="rate-limit"' in html
+    assert 'data-trigger="circuit-breaker"' in html
 
 
 def test_module8_css_styles(client):

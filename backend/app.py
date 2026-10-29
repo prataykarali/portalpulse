@@ -7,6 +7,7 @@ M4 RCA, M5 Action Intelligence, M6 AI Ops Assistant, M7 Safety, and M8 Actuation
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -15,7 +16,7 @@ from typing import Any
 from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -42,6 +43,8 @@ from backend.m7_actuator.routes import router as m7_actuator_router
 from backend.m8_chaos_lab.routes import router as m8_chaos_router
 from backend.m9_mlops_drift.routes import router as m9_mlops_router
 from backend.simulation.routes import router as simulation_router
+from backend.simulation.live_demo import router as live_demo_router
+from backend.portals.nirantar_fair_access_routes import router as nirantar_fair_access_router
 from backend.simulation.traffic_controller import (
     TRAFFIC_CONTROLLER,
     alias_router as traffic_alias_router,
@@ -186,6 +189,12 @@ def get_root_style():
 def get_root_js():
     return FileResponse(str(WEBSITE_DIR / "app.js"))
 
+
+@app.get("/demo-config.js")
+def get_demo_config() -> Response:
+    url = os.getenv("PORTALPULSE_API_URL", "")
+    return Response(f"window.__PORTALPULSE_BACKEND_URL__ = {json.dumps(url)};", media_type="text/javascript")
+
 # Mount Nirantar backend API sub-application
 from backend.connectors.nirantar_bridge import NIRANTAR_APP
 app.mount("/portals/nirantar/api", NIRANTAR_APP)
@@ -219,6 +228,8 @@ app.include_router(traffic_alias_router)
 app.include_router(stream_router)
 app.include_router(stream_alias_router)
 app.include_router(simulation_router)
+app.include_router(live_demo_router)
+app.include_router(nirantar_fair_access_router)
 app.include_router(m1_router)
 app.include_router(m2_router)
 app.include_router(m3_rca_router)
@@ -235,10 +246,10 @@ app.include_router(system_alias_router)
 
 @app.get("/")
 def get_root(request: Request) -> Any:
-    """Serves the interactive PortalPulse landing website for browsers, or API JSON status for API clients."""
+    """Serve the single live visual website to browsers, or API JSON to API clients."""
     accept = request.headers.get("accept", "")
-    if "text/html" in accept and (WEBSITE_DIR / "index.html").exists():
-        return FileResponse(str(WEBSITE_DIR / "index.html"))
+    if "text/html" in accept and (WEBSITE_DIR / "live-demo.html").exists():
+        return RedirectResponse(url="/website", status_code=302)
 
     return {
         "service": "PortalPulse Control Tower API",
@@ -265,11 +276,23 @@ def get_root(request: Request) -> Any:
 @app.get("/website")
 @app.get("/app")
 @app.get("/app/{full_path:path}")
-def get_website_app() -> Any:
-    """Serve the PortalPulse Web Application Shell & Command Center."""
-    if (WEBSITE_DIR / "index.html").exists():
-        return FileResponse(str(WEBSITE_DIR / "index.html"))
+def get_website_app(request: Request) -> Any:
+    """Serve the PortalPulse live visual command center at every app entry point."""
+    if request.url.path != "/website":
+        return RedirectResponse(url="/website", status_code=302)
+    if (WEBSITE_DIR / "live-demo.html").exists():
+        return FileResponse(str(WEBSITE_DIR / "live-demo.html"))
     return {"status": "ONLINE", "message": "Website directory not found"}
+
+
+@app.get("/live-demo")
+def get_live_demo() -> Any:
+    return RedirectResponse(url="/website", status_code=302)
+
+
+@app.get("/nirantar-demo")
+def get_nirantar_demo() -> Any:
+    return RedirectResponse(url="/website#nirantar", status_code=302)
 
 
 if __name__ == "__main__":

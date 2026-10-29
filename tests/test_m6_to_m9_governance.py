@@ -180,11 +180,11 @@ class TestClosedLoopActuator:
         assert rec.status == "SUCCESS"
         assert rec.action == SREAction.SCALE_OUT_WORKERS
         assert len(rec.metric_deltas) >= 5
-        assert len(rec.stabilization_trajectory) == 4
+        assert len(rec.stabilization_trajectory) == 5
 
-        # Verify trajectory steps: CRITICAL -> ACTUATING -> STABILIZING -> NOMINAL
+        # The first point records the measured pre-action state.
         states = [step["state"] for step in rec.stabilization_trajectory]
-        assert states == ["CRITICAL", "ACTUATING", "STABILIZING", "NOMINAL"]
+        assert states == ["PRE-ACTION", "CRITICAL", "ACTUATING", "STABILIZING", "NOMINAL"]
 
     def test_database_pool_expansion_actuation(self) -> None:
         actuator = ClosedLoopActuator()

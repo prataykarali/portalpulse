@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "PortalPulse · live control loop",
+    "subtitle": "Local IEMCRP traffic → measured decision → guarded actuation → feedback",
+    "locale": "en",
+    "output": "portalpulse.architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    {"id":"users","type":"external","label":"Result-day users","sublabel":"Local generated requests","pos":[40,90],"size":[145,64]},
+    {"id":"portal","type":"frontend","label":"IEMCRP portal","sublabel":"Real local HTTP responses","pos":[250,90],"size":[155,64]},
+    {"id":"telemetry","type":"backend","label":"M1 · Telemetry","sublabel":"RPS · p95 · errors · DB","pos":[485,90],"size":[165,64]},
+    {"id":"forecast","type":"backend","label":"M2 · Forecast","sublabel":"XGBoost · 5 / 10 / 15m","pos":[740,90],"size":[165,64]},
+    {"id":"detect","type":"backend","label":"M3 · Anomaly","sublabel":"Isolation Forest score","pos":[740,270],"size":[165,64]},
+    {"id":"diagnose","type":"backend","label":"M4 · Root cause","sublabel":"Classifier + NetworkX path","pos":[485,270],"size":[165,64]},
+    {"id":"policy","type":"backend","label":"M5 · Neural policy","sublabel":"PyTorch action probabilities","pos":[250,270],"size":[165,64]},
+    {"id":"safety","type":"security","label":"M6 · Safety gate","sublabel":"Capability · cooldown · approval","pos":[40,270],"size":[165,64]},
+    {"id":"actuate","type":"backend","label":"M7 · Actuator","sublabel":"Approved action only","pos":[40,465],"size":[165,64]},
+    {"id":"verify","type":"backend","label":"Verify & feed back","sublabel":"Measured post-action portal","pos":[250,465],"size":[170,64]}
+  ],
+  "connections": [
+    {"from":"users","to":"portal","label":"HTTP requests","variant":"emphasis"},
+    {"from":"portal","to":"telemetry","label":"actual samples","variant":"emphasis"},
+    {"from":"telemetry","to":"forecast","label":"metrics","variant":"emphasis"},
+    {"from":"forecast","to":"detect","label":"risk + demand","variant":"emphasis"},
+    {"from":"detect","to":"diagnose","label":"anomaly","variant":"emphasis"},
+    {"from":"diagnose","to":"policy","label":"cause","variant":"emphasis"},
+    {"from":"policy","to":"safety","label":"proposed action","variant":"emphasis"},
+    {"from":"safety","to":"actuate","label":"approved only","variant":"security"},
+    {"from":"actuate","to":"verify","label":"local effect","variant":"emphasis"},
+    {"from":"verify","to":"telemetry","label":"next cycle feedback","variant":"dashed"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"What is real here?","items":["M1 uses local HTTP measurements; M2–M5 run loaded model checkpoints.","M7 changes the local simulator only, then reads portal telemetry again."]},
+    {"dot":"emerald","title":"Pressure and response","items":["A blue intervention card appears only after a recorded M7 action.","Recovery is labelled verified only after measured post-action telemetry passes the verifier."]}
+  ]
+}

@@ -9,9 +9,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <!-- PortalPulse Antideploy Production Backend Target for here.now deployment -->
-  <meta name="portalpulse-backend-url" content="https://api.portalpulse.antideploy.dev">
+  <meta name="portalpulse-backend-url" content="https://portalpulse-api.antideploy.com">
 </head>
 <body>
+
 
   <!-- ========================================================================= -->
   <!-- PORTALPULSE APPLICATION SHELL & DASHBOARD PAGES                           -->
@@ -33,6 +34,7 @@
       </div>
 
       <div class="sidebar-nav-list">
+        <a class="studio-launch" href="/live-demo"><span>✦</span><b>Live Resilience Studio</b><small>Illustrated 7-page demo ↗</small></a>
         <button class="sidebar-btn active" data-page="overview" onclick="location.hash='#/app/overview'">
           <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
           <span>Overview</span>
@@ -144,6 +146,8 @@ tomorrows! 💙</div>
         </div>
       </div>
 
+
+      <section class="app-visual-banner" aria-label="PortalPulse page introduction"><div><span>PORTALPULSE · ILLUSTRATED CONTROL EXPERIENCE</span><h2 id="appBannerTitle">Your portal, always in view.</h2><p id="appBannerText">Explore the portal, then open the live studio to watch the full resilience loop.</p><a href="/live-demo">Open Live Resilience Studio →</a></div><img id="appBannerArt" src="assets/robot_explaining_nobg.png" alt="PortalPulse illustrated guide"></section>
 
       <!-- ===================================================================== -->
       <!-- PAGE 1: OVERVIEW / COMMAND CENTER (MATCHING media_1788537754136.jpg)   -->
@@ -3555,6 +3559,7 @@ VERIFICATION CHAIN:
     </div>
   </div>
 
+  <script src="/demo-config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

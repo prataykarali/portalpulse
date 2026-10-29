@@ -10,6 +10,10 @@ services:
       - key: PORT
         value: "8000"
       - key: ALLOWED_ORIGINS
-        value: "https://stellar-mosaic-xf62.here.now,https://misty-hollow-mf55.here.now,https://stellar-virtue-btfq.here.now"
+        value: "https://bronze-tinsel-n8pb.here.now"
+      - key: PORTALPULSE_DEMO_MODE
+        value: "1"
+      - key: NIRANTAR_DEMO_URL
+        value: "https://bronze-tinsel-n8pb.here.now/"
       - key: PYTHONUNBUFFERED
         value: "1"

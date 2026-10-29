@@ -12,12 +12,16 @@
 const PortalApp = (function () {
   // Production-decoupled API_BASE configuration:
   // Decoupled from window.location.origin because here.now (frontend) and Antideploy (backend) are hosted separately.
-  const DEFAULT_ANTIDEPLOY_BACKEND = "https://api.portalpulse.antideploy.dev";
+  const DEFAULT_ANTIDEPLOY_BACKEND = "https://portalpulse-api.antideploy.com";
   const API_BASE = (function () {
     if (typeof window !== "undefined") {
       // 1. Explicit window override (e.g., set by runtime injection or config script)
       if (window.__PORTALPULSE_BACKEND_URL__) return window.__PORTALPULSE_BACKEND_URL__.replace(/\/$/, "");
       if (window.PORTALPULSE_BACKEND_URL) return window.PORTALPULSE_BACKEND_URL.replace(/\/$/, "");
+
+      if (/^(localhost|127\.0\.0\.1)$/.test(window.location.hostname)) {
+        return window.location.origin;
+      }
 
       // 2. HTML meta tag configuration
       const meta = document.querySelector('meta[name="portalpulse-backend-url"]');
@@ -281,6 +285,25 @@ const PortalApp = (function () {
     if (robotImg && mascotInfo.img) robotImg.src = mascotInfo.img;
     if (chalkQuote && mascotInfo.quote) chalkQuote.innerHTML = mascotInfo.quote;
     if (robotBubble && mascotInfo.quote) robotBubble.innerHTML = mascotInfo.quote;
+
+    const bannerCopy = {
+      overview: ["Your portal, always in view.", "Watch how signals become decisions in the live resilience studio.", "assets/robot_explaining_nobg.png"],
+      portals: ["Every portal has a story.", "Move from a portfolio view into a measured result-day scenario.", "assets/boy_pointing_nobg.png"],
+      "portal-detail": ["Look closer at this portal.", "Follow the same signals through forecast, diagnosis, action, and recovery.", "assets/boy_thinking_nobg.png"],
+      monitoring: ["Signals you can actually see.", "Explore the live traffic and model graphs in the illustrated studio.", "assets/boy_explaining_nobg.png"],
+      simulation: ["Stress the system, learn the response.", "Run the full local traffic scenario and watch each phase unfold.", "assets/robot_excited_nobg.png"],
+      incidents: ["Make every incident understandable.", "See warnings beside the portal and trace the measured recovery.", "assets/robot_thinking_nobg.png"],
+      actions: ["A decision is more than a number.", "Inspect neural probabilities, capability checks, and safety rules.", "assets/boy_working_nobg.png"],
+      integrations: ["Connect the full journey.", "See PortalPulse's owned warning layer over a Nirantar preview.", "assets/boy_pointing_nobg.png"],
+      settings: ["Make resilience your own.", "The live studio explains what each configured part does.", "assets/robot_happy_nobg.png"]
+    };
+    const banner = bannerCopy[page] || bannerCopy.overview;
+    const bannerTitle = document.getElementById("appBannerTitle");
+    const bannerText = document.getElementById("appBannerText");
+    const bannerArt = document.getElementById("appBannerArt");
+    if (bannerTitle) bannerTitle.textContent = banner[0];
+    if (bannerText) bannerText.textContent = banner[1];
+    if (bannerArt) bannerArt.src = banner[2];
 
     // Trigger page renders
     if (page === "portals") renderPortalsCards();

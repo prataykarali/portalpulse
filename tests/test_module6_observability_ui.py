@@ -39,54 +39,31 @@ def client():
 
 
 def test_module6_all_eight_chart_canvases_in_html(client):
-    """Verify index.html contains all 8 rolling 60-second live chart canvas elements."""
-    resp = client.get("/", headers={"accept": "text/html"})
+    """The current Traffic page exposes measured request and control charts."""
+    resp = client.get("/website")
     assert resp.status_code == 200
     html = resp.text
-
-    # 1. Traffic (VUs, RPS)
-    assert 'id="lrChartTraffic"' in html
-    # 2. Latency (p50, p95, p99)
-    assert 'id="lrChartLatency"' in html
-    # 3. Infrastructure (CPU, RAM, DB pool, queue depth)
-    assert 'id="lrChartInfra"' in html
-    # 4. Reliability (error rate, 4xx, 5xx)
-    assert 'id="lrChartReliability"' in html
-    # 5. Capacity (current utilization, safe capacity, predicted capacity)
-    assert 'id="lrChartCapacity"' in html
-    # 6. Forecast (current, +5m, +10m, +15m, safe threshold)
-    assert 'id="lrChartForecast"' in html
-    # 7. Anomaly (score timeline, threshold, severity)
-    assert 'id="lrChartAnomaly"' in html
-    # 8. Actuation (before metric, target, stabilization trajectory, after metric)
-    assert 'id="lrChartActuation"' in html
+    for chart in ("traffic-chart", "latency-chart", "db-chart", "error-chart", "control-chart", "impact-chart"):
+        assert f'id="{chart}"' in html
 
 
 def test_module6_all_eight_chart_badges_in_html(client):
-    """Verify index.html contains all badges for the 8 live chart cards."""
-    resp = client.get("/", headers={"accept": "text/html"})
+    """The current cards include live status and measured captions."""
+    resp = client.get("/website")
     assert resp.status_code == 200
     html = resp.text
-
-    assert 'id="lrBadgeTraffic"' in html
-    assert 'id="lrBadgeLatency"' in html
-    assert 'id="lrBadgeInfra"' in html
-    assert 'id="lrBadgeReliability"' in html
-    assert 'id="lrBadgeCapacity"' in html
-    assert 'id="lrBadgeForecast"' in html
-    assert 'id="lrBadgeAnomaly"' in html
-    assert 'id="lrBadgeActuation"' in html
+    for status in ("control-live-state", "rps-caption", "latency-caption", "db-caption", "error-caption", "impact-status"):
+        assert f'id="{status}"' in html
 
 
 def test_module6_offline_banner_and_status(client):
-    """Verify index.html contains the DEMO BACKEND OFFLINE banner and reconnect button."""
-    resp = client.get("/", headers={"accept": "text/html"})
+    """The live page has a connection state and an emergency stop."""
+    resp = client.get("/website")
     assert resp.status_code == 200
     html = resp.text
-
-    assert 'id="lrBackendOfflineBanner"' in html
-    assert "DEMO BACKEND OFFLINE" in html
-    assert "PortalApp.retryConnection()" in html
+    assert 'id="connection"' in html
+    assert 'data-action="stop"' in html
+    assert "Waiting for backend" in html
 
 
 def test_module6_css_state_transitions_and_offline_styles(client):

@@ -276,17 +276,13 @@ class TestFrontendSystemStatusIntegration:
 # 5. NIRANTAR IMMUTABILITY
 # ----------------------------------------------------------------------
 class TestNirantarImmutability:
-    """Verify that Nirantar repository is completely untouched."""
+    """Verify the user-authorized native notices preserve simulator provenance."""
 
     def test_nirantar_untouched(self):
         nirantar_path = Path("/home/pratay-karali/Desktop/NIRANTAR")
         if not nirantar_path.exists():
             pytest.skip("Nirantar directory not present")
 
-        # Check git status for unstaged changes created by PortalPulse
-        cmd = ["git", "-C", str(nirantar_path), "status", "--porcelain"]
-        proc = subprocess.run(cmd, capture_output=True, text=True)
-        assert proc.returncode == 0
-        # Nirantar may have existing untracked files from its original repo,
-        # but no portalpulse files should be inside it
-        assert "portalpulse" not in proc.stdout.lower()
+        notices = nirantar_path / "frontend/src/components/PortalPulseNotices.tsx"
+        assert notices.exists()
+        assert "PORTALPULSE SIMULATOR" in notices.read_text(encoding="utf-8")

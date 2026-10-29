@@ -8,9 +8,8 @@ Fulfills Module 3 Requirements:
   3. ResultRushStudentUser (15%)
   4. FacultyUser (10%)
   5. AbnormalBotUser (5%)
-- Manages 8 sequential traffic phases:
-  BASELINE -> RAMP -> RESULT_RUSH -> SATURATION -> CONTROLLED_RECOVERY ->
-  SUSTAINED_LOAD -> SECOND_WAVE -> NORMAL (and loops continuously).
+- Manages an eight-phase continuous run or a twelve-case local demo, including
+  DB saturation, rate limiting, gateway failures, recovery, and a second wave.
 - Distinguishes REAL REQUEST LOAD from VIRTUAL USER SCENARIO SCALE (50 to 12,500 VUs).
 - Continuous transaction accounting for:
   - GET dashboard
@@ -26,7 +25,9 @@ from __future__ import annotations
 import asyncio
 import collections
 import logging
+import os
 import random
+import threading
 import time
 from datetime import datetime, timezone
 from enum import Enum
@@ -41,6 +42,23 @@ from backend.portals.iemcrp_app import DB_POOL, IEMCRP_INFRA_STATE, iemcrp_app
 
 logger = logging.getLogger("portalpulse.traffic_controller")
 
+DEMO_MAX_WORKERS = 6
+DEMO_MAX_REQUESTS_PER_SECOND = 12.0
+DEMO_MAX_RUNTIME_SECONDS = 100.0
+DEMO_START_TEMPERATURE_C = 85.0
+DEMO_STOP_TEMPERATURE_C = 88.0
+
+
+def cpu_package_temperature_c() -> Optional[float]:
+    """Read the package sensor when the host exposes one; unknown stays unknown."""
+    try:
+        import psutil
+        readings = psutil.sensors_temperatures().get("coretemp", [])
+        package = next((entry.current for entry in readings if "Package" in entry.label), None)
+        return float(package) if package is not None else None
+    except (ImportError, OSError, ValueError, AttributeError):
+        return None
+
 
 # ===========================================================================
 # 1. SCHEMAS AND DATA MODELS
@@ -50,7 +68,11 @@ class TrafficPhase(str, Enum):
     RAMP = "RAMP"
     RESULT_RUSH = "RESULT_RUSH"
     SATURATION = "SATURATION"
+    ANOMALY_DETECTION = "ANOMALY_DETECTION"
+    POLICY_ACTION = "POLICY_ACTION"
     CONTROLLED_RECOVERY = "CONTROLLED_RECOVERY"
+    RATE_LIMIT_PRESSURE = "RATE_LIMIT_PRESSURE"
+    GATEWAY_FAILURE = "GATEWAY_FAILURE"
     SUSTAINED_LOAD = "SUSTAINED_LOAD"
     SECOND_WAVE = "SECOND_WAVE"
     NORMAL = "NORMAL"
@@ -66,6 +88,24 @@ PHASE_SEQUENCE: List[TrafficPhase] = [
     TrafficPhase.SECOND_WAVE,
     TrafficPhase.NORMAL,
 ]
+
+DEMO_PHASE_SEQUENCE: List[TrafficPhase] = [
+    TrafficPhase.BASELINE, TrafficPhase.RAMP, TrafficPhase.RESULT_RUSH,
+    TrafficPhase.SATURATION, TrafficPhase.ANOMALY_DETECTION,
+    TrafficPhase.POLICY_ACTION, TrafficPhase.CONTROLLED_RECOVERY,
+    TrafficPhase.RATE_LIMIT_PRESSURE, TrafficPhase.GATEWAY_FAILURE,
+    TrafficPhase.SUSTAINED_LOAD, TrafficPhase.SECOND_WAVE,
+    TrafficPhase.NORMAL,
+]
+
+DEMO_PHASE_DURATIONS: Dict[TrafficPhase, float] = {
+    TrafficPhase.BASELINE: 6.0, TrafficPhase.RAMP: 7.0,
+    TrafficPhase.RESULT_RUSH: 8.0, TrafficPhase.SATURATION: 12.0,
+    TrafficPhase.ANOMALY_DETECTION: 5.0, TrafficPhase.POLICY_ACTION: 5.0,
+    TrafficPhase.CONTROLLED_RECOVERY: 8.0, TrafficPhase.RATE_LIMIT_PRESSURE: 7.0,
+    TrafficPhase.GATEWAY_FAILURE: 7.0, TrafficPhase.SUSTAINED_LOAD: 7.0,
+    TrafficPhase.SECOND_WAVE: 8.0, TrafficPhase.NORMAL: 6.0,
+}
 
 PHASE_SPECS: Dict[TrafficPhase, Dict[str, Any]] = {
     TrafficPhase.BASELINE: {
@@ -92,11 +132,27 @@ PHASE_SPECS: Dict[TrafficPhase, Dict[str, Any]] = {
         "real_workers": 48,  # Contending on 50 max DB connections
         "description": "Extreme saturation knee-point: DB pool contention and queue backlogs.",
     },
+    TrafficPhase.ANOMALY_DETECTION: {
+        "target_vus": 12500, "duration_sec": 8.0, "real_workers": 48,
+        "description": "Observe M2-M4 inference during measured IEMCRP saturation.",
+    },
+    TrafficPhase.POLICY_ACTION: {
+        "target_vus": 10000, "duration_sec": 8.0, "real_workers": 40,
+        "description": "Observe actual M5 recommendation, M6 safety, and M7 outcome.",
+    },
     TrafficPhase.CONTROLLED_RECOVERY: {
         "target_vus": 5000,
         "duration_sec": 25.0,
         "real_workers": 20,
         "description": "Autonomous mitigation active: Virtual waiting room gating excess arrivals.",
+    },
+    TrafficPhase.RATE_LIMIT_PRESSURE: {
+        "target_vus": 6500, "duration_sec": 16.0, "real_workers": 25,
+        "description": "Refresh bursts meet the local ingress limit; HTTP 429s are measured.",
+    },
+    TrafficPhase.GATEWAY_FAILURE: {
+        "target_vus": 4800, "duration_sec": 16.0, "real_workers": 22,
+        "description": "A downstream failure causes measured 503 responses before recovery.",
     },
     TrafficPhase.SUSTAINED_LOAD: {
         "target_vus": 2500,
@@ -149,7 +205,9 @@ class TrafficStatusResponse(BaseModel):
     real_requests_per_sec: float
     virtual_user_scale: int
     real_concurrency_workers: int
+    in_flight_requests: int = 0
     scale_ratio: str
+    stop_reason: Optional[str] = None
 
 
 class StartTrafficRequest(BaseModel):
@@ -398,6 +456,7 @@ class TrafficController:
 
         # Phase management
         self.current_phase_idx: int = 0
+        self.phase_sequence: List[TrafficPhase] = PHASE_SEQUENCE
         self.current_phase: TrafficPhase = TrafficPhase.BASELINE
         self.phase_start_time: float = 0.0
         self.scenario_start_time: float = 0.0
@@ -412,6 +471,7 @@ class TrafficController:
         self._supervisor_task: Optional[asyncio.Task] = None
         self._worker_tasks: List[asyncio.Task] = []
         self._active_worker_count: int = 0
+        self.in_flight_requests: int = 0
 
         # Rolling accounting buffer
         self.transactions: collections.deque[TransactionRecord] = collections.deque(maxlen=2000)
@@ -424,6 +484,24 @@ class TrafficController:
         self.stats_rps: float = 0.0
         self.stats_success_rate: float = 100.0
         self.stats_failure_rate: float = 0.0
+        self.arrival_factor: float = 1.0
+        self._wave_target: float = 1.0
+        self._last_wave_at: float = 0.0
+        self._last_thermal_check: float = 0.0
+        self.stop_reason: Optional[str] = None
+        self._rate_lock = threading.Lock()
+        self._next_request_at: float = 0.0
+        self.last_started_at: Optional[float] = None
+
+    def demo_restart_wait_seconds(self) -> float:
+        """Limit repeat runs on a public demo host without slowing local use."""
+        if os.getenv("PORTALPULSE_DEMO_MODE") != "1" or self.last_started_at is None:
+            return 0.0
+        try:
+            cooldown = max(0.0, float(os.getenv("PORTALPULSE_DEMO_MIN_RESTART_SECONDS", "0")))
+        except ValueError:
+            cooldown = 0.0
+        return max(0.0, cooldown - (time.monotonic() - self.last_started_at))
 
     def record_transaction(self, record: TransactionRecord) -> None:
         """Append to rolling transaction accounting buffer and stream via SSE."""
@@ -435,12 +513,12 @@ class TrafficController:
                 "type": "transaction",
                 "timestamp": record.timestamp,
                 "persona": record.persona,
-                "operation": record.operation,
+                "operation": record.endpoint,
                 "endpoint": record.endpoint,
-                "status_code": record.status_code,
-                "duration_ms": record.duration_ms,
+                "status_code": record.status,
+                "duration_ms": record.latency,
                 "success": record.success,
-                "error": record.error,
+                "error": None if record.success else f"HTTP {record.status}",
             })
         except Exception:
             pass
@@ -455,20 +533,40 @@ class TrafficController:
         if self.is_running and not self.is_paused:
             return {"status": "ALREADY_RUNNING", "phase": self.current_phase.value}
 
+        restart_wait = self.demo_restart_wait_seconds()
+        if restart_wait > 0:
+            raise HTTPException(status_code=429, detail=f"Demo can restart in {restart_wait:.0f} seconds.")
+
+        if os.getenv("PORTALPULSE_DEMO_MODE") == "1":
+            temperature = cpu_package_temperature_c()
+            if temperature is not None and temperature >= DEMO_START_TEMPERATURE_C:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Demo load held: CPU package is {temperature:.0f}°C; start allowed below {DEMO_START_TEMPERATURE_C:.0f}°C.",
+                )
+
         self.scenario_name = scenario
+        self.phase_sequence = DEMO_PHASE_SEQUENCE if scenario == "IEMCRP_RESULT_DAY_LIVE_DEMO" else PHASE_SEQUENCE
         self.loop_continuously = loop_continuously
         self.current_phase = start_phase
         self.current_phase_idx = (
-            PHASE_SEQUENCE.index(start_phase) if start_phase in PHASE_SEQUENCE else 0
+            self.phase_sequence.index(start_phase) if start_phase in self.phase_sequence else 0
         )
         self.custom_phase_duration = None
         self.custom_target_vus = None
 
         now = time.monotonic()
         self.scenario_start_time = now
+        self.last_started_at = now
         self.phase_start_time = now
         self.is_running = True
         self.is_paused = False
+        self.arrival_factor = 1.0
+        self._wave_target = 1.0
+        self._last_wave_at = 0.0
+        self._last_thermal_check = 0.0
+        self._next_request_at = 0.0
+        self.stop_reason = None
 
         # Start supervisor task
         if self._supervisor_task is None or self._supervisor_task.done():
@@ -497,9 +595,20 @@ class TrafficController:
         await self._adjust_workers(0)
         self.current_vus = 0
         self.stats_rps = 0.0
+        self.stop_reason = self.stop_reason or "MANUAL_STOP"
+        self._clear_demo_faults()
 
         logger.info("[TRAFFIC_CONTROLLER] Traffic controller stopped.")
         return {"status": "STOPPED", "scenario": self.scenario_name}
+
+    def _clear_demo_faults(self) -> None:
+        if os.getenv("PORTALPULSE_DEMO_MODE") != "1":
+            return
+        DB_POOL.set_fault_pool_exhaustion(False)
+        DB_POOL.set_fault_db_latency(0)
+        IEMCRP_INFRA_STATE["5xx_injection_enabled"] = False
+        IEMCRP_INFRA_STATE["circuit_breaker_enabled"] = False
+        IEMCRP_INFRA_STATE["rate_limit_per_sec"] = 120.0
 
     def pause(self) -> Dict[str, Any]:
         """Temporarily pause traffic generation without resetting phase."""
@@ -530,7 +639,7 @@ class TrafficController:
         if phase:
             self.current_phase = phase
             self.current_phase_idx = (
-                PHASE_SEQUENCE.index(phase) if phase in PHASE_SEQUENCE else 0
+                self.phase_sequence.index(phase) if phase in self.phase_sequence else 0
             )
             self.phase_start_time = time.monotonic()
         if target_vus is not None:
@@ -558,6 +667,8 @@ class TrafficController:
     def get_phase_duration(self) -> float:
         if self.custom_phase_duration is not None:
             return self.custom_phase_duration
+        if self.scenario_name == "IEMCRP_RESULT_DAY_LIVE_DEMO":
+            return DEMO_PHASE_DURATIONS.get(self.current_phase, 10.0)
         spec = PHASE_SPECS.get(self.current_phase, {})
         return spec.get("duration_sec", 20.0)
 
@@ -571,6 +682,23 @@ class TrafficController:
     async def _supervisor_loop(self) -> None:
         """Orchestrates phase progressions, smoothly ramps VUs, and tracks window stats."""
         while self.is_running:
+            if os.getenv("PORTALPULSE_DEMO_MODE") == "1" and time.monotonic() - self.scenario_start_time >= DEMO_MAX_RUNTIME_SECONDS:
+                self.is_running = False
+                self.stop_reason = "TIME_LIMIT"
+                await self._adjust_workers(0)
+                self._clear_demo_faults()
+                logger.info("[TRAFFIC_CONTROLLER] Local demo reached its 100-second safety limit.")
+                break
+            if os.getenv("PORTALPULSE_DEMO_MODE") == "1" and time.monotonic() - self._last_thermal_check >= 2.0:
+                self._last_thermal_check = time.monotonic()
+                temperature = cpu_package_temperature_c()
+                if temperature is not None and temperature >= DEMO_STOP_TEMPERATURE_C:
+                    self.is_running = False
+                    self.stop_reason = f"THERMAL_LIMIT_{temperature:.0f}C"
+                    await self._adjust_workers(0)
+                    self._clear_demo_faults()
+                    logger.warning("[TRAFFIC_CONTROLLER] Load stopped at %.1f°C package temperature.", temperature)
+                    break
             if self.is_paused:
                 await asyncio.sleep(0.5)
                 continue
@@ -589,7 +717,15 @@ class TrafficController:
                 self.current_vus = max(target_vus, self.current_vus - step)
 
             # Ensure proper number of real worker tasks are active
-            desired_workers = self.get_phase_workers()
+            # Demand waves alter the number and pace of real HTTP workers.
+            # The UI only charts transactions observed after those requests run.
+            if now - self._last_wave_at >= 2.0:
+                spread = 0.22 if self.current_phase in (TrafficPhase.BASELINE, TrafficPhase.NORMAL) else 0.38
+                self._wave_target = max(0.55, min(1.48, random.gauss(1.0, spread)))
+                self._last_wave_at = now
+            self.arrival_factor += (self._wave_target - self.arrival_factor) * 0.38
+            worker_cap = DEMO_MAX_WORKERS if os.getenv("PORTALPULSE_DEMO_MODE") == "1" else 64
+            desired_workers = max(2, min(worker_cap, round(self.get_phase_workers() * self.arrival_factor)))
             await self._adjust_workers(desired_workers)
 
             # Compute sliding-window statistics
@@ -608,12 +744,13 @@ class TrafficController:
                     "virtual_users": self.current_vus,
                     "target_vus": target_vus,
                     "active_workers": len(self._worker_tasks),
-                    "total_requests": self.stats_total_requests,
-                    "successful_requests": self.stats_successful_requests,
-                    "failed_requests": self.stats_failed_requests,
+                    "total_requests": len(self.transactions),
+                    "successful_requests": sum(1 for x in self.transactions if x.success),
+                    "failed_requests": sum(1 for x in self.transactions if not x.success),
                     "error_rate": self.stats_failure_rate,
-                    "rps": self.stats_recent_rps,
-                    "avg_latency_ms": self.stats_recent_avg_latency_ms,
+                    "rps": self.stats_rps,
+                    "avg_latency_ms": round(sum(x.latency for x in self.transactions) / max(1, len(self.transactions)), 1),
+                    "in_flight_requests": self.in_flight_requests,
                     "is_running": self.is_running,
                     "is_paused": self.is_paused,
                 })
@@ -632,16 +769,34 @@ class TrafficController:
         self.custom_target_vus = None
         self.current_phase_idx += 1
 
-        if self.current_phase_idx >= len(PHASE_SEQUENCE):
+        if self.current_phase_idx >= len(self.phase_sequence):
             if self.loop_continuously:
                 self.current_phase_idx = 0
             else:
                 self.is_running = False
+                self.stop_reason = "SCENARIO_COMPLETE"
                 await self._adjust_workers(0)
+                self._clear_demo_faults()
                 logger.info("[TRAFFIC_CONTROLLER] Completed all scenario phases.")
                 return
 
-        self.current_phase = PHASE_SEQUENCE[self.current_phase_idx]
+        self.current_phase = self.phase_sequence[self.current_phase_idx]
+        if self.scenario_name == "IEMCRP_RESULT_DAY_LIVE_DEMO":
+            if self.current_phase == TrafficPhase.SATURATION:
+                DB_POOL.set_fault_db_latency(450)
+                DB_POOL.set_fault_pool_exhaustion(True)
+            elif self.current_phase == TrafficPhase.CONTROLLED_RECOVERY:
+                DB_POOL.set_fault_pool_exhaustion(False)
+                DB_POOL.set_fault_db_latency(0)
+            elif self.current_phase == TrafficPhase.RATE_LIMIT_PRESSURE:
+                IEMCRP_INFRA_STATE["rate_limit_per_sec"] = 4.0
+            elif self.current_phase == TrafficPhase.GATEWAY_FAILURE:
+                IEMCRP_INFRA_STATE["rate_limit_per_sec"] = 120.0
+                IEMCRP_INFRA_STATE["5xx_injection_enabled"] = True
+            elif self.current_phase == TrafficPhase.SUSTAINED_LOAD:
+                IEMCRP_INFRA_STATE["5xx_injection_enabled"] = False
+                IEMCRP_INFRA_STATE["circuit_breaker_enabled"] = False
+                IEMCRP_INFRA_STATE["rate_limit_per_sec"] = 120.0
         self.phase_start_time = time.monotonic()
         logger.info(
             f"[TRAFFIC_CONTROLLER] Phase Transition: -> {self.current_phase.value} "
@@ -660,9 +815,14 @@ class TrafficController:
             self._worker_tasks.append(t)
 
         # Cancel excess workers if target is lower
+        cancelled = []
         while len(self._worker_tasks) > target_count:
             t = self._worker_tasks.pop()
             t.cancel()
+            cancelled.append(t)
+
+        if cancelled:
+            await asyncio.gather(*cancelled, return_exceptions=True)
 
         self._active_worker_count = len(self._worker_tasks)
 
@@ -676,9 +836,27 @@ class TrafficController:
                     continue
 
                 try:
-                    persona_cls = random.choices(PERSONAS, weights=PERSONA_WEIGHTS, k=1)[0]
-                    await persona_cls.execute(client, self.record_transaction)
-                    think_time = persona_cls.get_think_time()
+                    weights = {
+                        TrafficPhase.RESULT_RUSH: [18, 30, 38, 8, 6],
+                        TrafficPhase.SATURATION: [12, 35, 35, 8, 10],
+                        TrafficPhase.RATE_LIMIT_PRESSURE: [12, 45, 25, 5, 13],
+                        TrafficPhase.GATEWAY_FAILURE: [24, 26, 25, 10, 15],
+                        TrafficPhase.SECOND_WAVE: [20, 30, 30, 15, 5],
+                    }.get(self.current_phase, PERSONA_WEIGHTS)
+                    persona_cls = random.choices(PERSONAS, weights=weights, k=1)[0]
+                    if os.getenv("PORTALPULSE_DEMO_MODE") == "1":
+                        with self._rate_lock:
+                            slot = max(time.monotonic(), self._next_request_at)
+                            self._next_request_at = slot + 1.0 / DEMO_MAX_REQUESTS_PER_SECOND
+                        await asyncio.sleep(max(0.0, slot - time.monotonic()))
+                        if not self.is_running:
+                            break
+                    self.in_flight_requests += 1
+                    try:
+                        await persona_cls.execute(client, self.record_transaction)
+                    finally:
+                        self.in_flight_requests -= 1
+                    think_time = persona_cls.get_think_time() / max(0.55, self.arrival_factor)
                     await asyncio.sleep(think_time)
                 except asyncio.CancelledError:
                     break
@@ -697,9 +875,16 @@ class TrafficController:
             self.stats_failure_rate = 0.0
             return
 
-        # Use the most recent ~100 transactions (or transactions within last 4s)
-        recent = list(self.transactions)[-120:]
+        # Use a real three-second accounting window.
+        cutoff = datetime.now(timezone.utc).timestamp() - 3.0
+        recent = [t for t in self.transactions if datetime.fromisoformat(t.timestamp).timestamp() >= cutoff]
         if not recent:
+            self.stats_p50 = 0.0
+            self.stats_p95 = 0.0
+            self.stats_p99 = 0.0
+            self.stats_rps = 0.0
+            self.stats_success_rate = 100.0
+            self.stats_failure_rate = 0.0
             return
 
         latencies = [t.latency for t in recent]
@@ -713,12 +898,7 @@ class TrafficController:
         self.stats_success_rate = round((successes / max(1, total)) * 100.0, 1)
         self.stats_failure_rate = round(100.0 - self.stats_success_rate, 1)
 
-        # Compute arrival RPS across the window
-        # Pacing multiplier according to target VUs
-        virtual_scale = self.get_phase_target_vus()
-        real_worker_count = max(1, self._active_worker_count)
-        base_rps = float(total) / 3.0  # Approx real throughput
-        self.stats_rps = round(base_rps, 1)
+        self.stats_rps = round(float(total) / 3.0, 1)
 
     def get_status(self) -> TrafficStatusResponse:
         """Return the current comprehensive traffic controller status."""
@@ -732,11 +912,11 @@ class TrafficController:
             target_vus=target_v,
             current_vus=self.current_vus if self.is_running else 0,
             rps=self.stats_rps,
-            success_rate=self.stats_success_rate,
-            failure_rate=self.stats_failure_rate,
-            p50=self.stats_p50,
-            p95=self.stats_p95,
-            p99=self.stats_p99,
+            success_rate=self.stats_success_rate if self.is_running else 100.0,
+            failure_rate=self.stats_failure_rate if self.is_running else 0.0,
+            p50=self.stats_p50 if self.is_running else 0.0,
+            p95=self.stats_p95 if self.is_running else 0.0,
+            p99=self.stats_p99 if self.is_running else 0.0,
             elapsed=elapsed,
             scenario=self.scenario_name,
             is_running=self.is_running,
@@ -744,7 +924,9 @@ class TrafficController:
             real_requests_per_sec=self.stats_rps,
             virtual_user_scale=target_v,
             real_concurrency_workers=self._active_worker_count,
+            in_flight_requests=self.in_flight_requests,
             scale_ratio=f"1 real request worker represents ~{ratio_val} conceptual virtual users",
+            stop_reason=self.stop_reason,
         )
 
     def get_recent_transactions(self, limit: int = 50) -> List[TransactionRecord]:

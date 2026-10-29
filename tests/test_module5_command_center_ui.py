@@ -23,67 +23,19 @@ def client():
 
 
 def test_command_center_html_storyboard(client):
-    """Verify index.html contains all 5 rows of the unified command center storyboard."""
-    resp = client.get("/", headers={"accept": "text/html"})
+    """The current command page exposes measured charts and bounded controls."""
+    resp = client.get("/website")
     assert resp.status_code == 200
     html = resp.text
-
-    # Top Header & Status
-    assert "PORTALPULSE" in html
-    assert "LIVE RESILIENCE COMMAND CENTER" in html
-    assert "SYSTEM OPERATIONAL" in html
-    assert "CONTROL CYCLE" in html
-    assert "RESULT-DAY SCENARIO" in html
-    assert "12,481 VUs" in html
-
-    # Row 1 — Traffic KPIs
-    assert 'id="lrKpiVus"' in html
-    assert 'id="lrKpiRps"' in html
-    assert 'id="lrKpiP95"' in html
-    assert 'id="lrKpiError"' in html
-    assert 'id="lrKpiCapacity"' in html
-
-    # Row 2 — 4 Live Graphs (Canvases)
-    assert 'id="lrChartVusRps"' in html
-    assert 'id="lrChartLatency"' in html
-    assert 'id="lrChartResources"' in html
-    assert 'id="lrChartErrors"' in html
-
-    # Row 3 — Intelligence Grid (M2, M3, M4, M5)
-    assert "M2 FORECAST" in html
-    assert 'id="lrM2_5m"' in html
-    assert 'id="lrM2_10m"' in html
-    assert 'id="lrM2_15m"' in html
-    assert 'id="lrM2_safe"' in html
-
-    assert "M3 ANOMALY" in html
-    assert 'id="lrM3_score"' in html
-    assert 'id="lrM3_badge"' in html
-
-    assert "M4 RCA" in html
-    assert 'id="lrM4_db_pct"' in html
-    assert 'id="lrM4_net_pct"' in html
-    assert 'id="lrM4_path"' in html
-
-    assert "M5 POLICY" in html
-    assert 'id="lrM5_action"' in html
-    assert 'id="lrM5_conf"' in html
-
-    # Row 4 — Actual Control Path
-    assert "Actual Control Path" in html
-    assert 'id="lrNodeTraffic"' in html
-    assert 'id="lrNodeM1"' in html
-    assert 'id="lrNodeM2"' in html
-    assert 'id="lrNodeM3"' in html
-    assert 'id="lrNodeM4"' in html
-    assert 'id="lrNodeM5"' in html
-    assert 'id="lrNodeM6"' in html
-    assert 'id="lrNodeM7"' in html
-    assert 'id="lrNodeRec"' in html
-
-    # Bottom — Live Event Terminal
-    assert "LIVE EVENT TERMINAL" in html
-    assert 'id="lrEventTerminal"' in html
+    assert 'data-view-panel="command"' in html
+    assert 'id="command-chart"' in html
+    assert 'id="control-chart"' in html
+    assert 'id="control-decision"' in html
+    assert 'id="control-outcome"' in html
+    assert 'data-action="start"' in html
+    assert 'data-action="stop"' in html
+    assert 'id="coach-popup"' in html
+    assert "12,481 VUs" not in html
 
 
 def test_command_center_style_css(client):

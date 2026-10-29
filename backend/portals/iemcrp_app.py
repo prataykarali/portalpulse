@@ -12,6 +12,8 @@ Independent execution contract:
 from __future__ import annotations
 
 import random
+import collections
+import os
 import threading
 import time
 from datetime import datetime, timezone
@@ -25,6 +27,12 @@ iemcrp_app = FastAPI(
     description="Monolithic educational ERP with constrained DB pool (50 max connections) and transactional marksheet operations.",
     version="2.0.0",
 )
+
+
+def _query_sleep(nominal_seconds: float) -> None:
+    """Vary actual local query service time; charts still use measured HTTP latency."""
+    factor = random.uniform(0.7, 1.4) if os.getenv("PORTALPULSE_DEMO_MODE") == "1" else 1.0
+    time.sleep(nominal_seconds * factor)
 
 # ---------------------------------------------------------------------------
 # REAL MONOLITHIC DATABASE ENGINE WITH CONSTRAINED CONNECTION POOL (N=50)
@@ -40,6 +48,7 @@ class MonolithicDatabasePool:
         self.waiting_queries = 0
         self.total_queries = 0
         self.failed_queries = 0
+        self._recent_active: collections.deque[tuple[float, int]] = collections.deque(maxlen=10000)
 
         # Fault injection state
         self.injected_db_latency_ms: float = 0.0
@@ -66,6 +75,7 @@ class MonolithicDatabasePool:
             if acquired:
                 self.active_connections += 1
                 self.total_queries += 1
+                self._recent_active.append((time.monotonic(), self.active_connections))
             else:
                 self.failed_queries += 1
 
@@ -76,17 +86,23 @@ class MonolithicDatabasePool:
         with self._lock:
             if self.active_connections > 0:
                 self.active_connections -= 1
+                self._recent_active.append((time.monotonic(), self.active_connections))
                 self._semaphore.release()
 
     def get_stats(self) -> Dict[str, Any]:
         """Return pool utilization metrics."""
         with self._lock:
             util_pct = round((self.active_connections / max(1, self.max_connections)) * 100.0, 1)
+            cutoff = time.monotonic() - 3.0
+            while self._recent_active and self._recent_active[0][0] < cutoff:
+                self._recent_active.popleft()
+            peak_active = max((count for _, count in self._recent_active), default=self.active_connections)
             return {
                 "max_connections": self.max_connections,
                 "active_connections": self.active_connections,
                 "waiting_queries": self.waiting_queries,
                 "utilization_percent": util_pct,
+                "recent_peak_utilization_percent": round(100.0 * peak_active / max(1, self.max_connections), 1),
                 "total_queries": self.total_queries,
                 "failed_queries": self.failed_queries,
                 "is_exhausted": self.active_connections >= self.max_connections,
@@ -107,6 +123,7 @@ class MonolithicDatabasePool:
                 while len(self._exhaustion_locks) < (self.max_connections - 2):
                     if self._semaphore.acquire(blocking=False):
                         self.active_connections += 1
+                        self._recent_active.append((time.monotonic(), self.active_connections))
                         self._exhaustion_locks.append(True)
                     else:
                         break
@@ -115,6 +132,7 @@ class MonolithicDatabasePool:
                 for _ in self._exhaustion_locks:
                     if self.active_connections > 0:
                         self.active_connections -= 1
+                        self._recent_active.append((time.monotonic(), self.active_connections))
                         self._semaphore.release()
                 self._exhaustion_locks.clear()
 
@@ -129,7 +147,33 @@ IEMCRP_INFRA_STATE = {
     "static_fallback_enabled": False,
     "5xx_injection_enabled": False,
     "rate_limit_per_sec": 120.0,
+    "circuit_breaker_enabled": False,
+    "pod_restart_count": 0,
 }
+
+_request_times: collections.deque[float] = collections.deque()
+_request_times_lock = threading.Lock()
+
+
+@iemcrp_app.middleware("http")
+async def simulated_ingress(request: Request, call_next):
+    """Apply the local ingress conditions to real simulator HTTP requests."""
+    if request.url.path.startswith("/api/") and not request.url.path.startswith("/api/portalpulse/"):
+        now = time.monotonic()
+        with _request_times_lock:
+            while _request_times and _request_times[0] < now - 1.0:
+                _request_times.popleft()
+            limit = float(IEMCRP_INFRA_STATE["rate_limit_per_sec"])
+            limited = len(_request_times) >= limit
+            if not limited:
+                _request_times.append(now)
+        if limited:
+            return Response("Rate limited by local IEMCRP ingress", status_code=429)
+        if IEMCRP_INFRA_STATE["circuit_breaker_enabled"]:
+            return Response("Circuit breaker open", status_code=503)
+        if IEMCRP_INFRA_STATE["5xx_injection_enabled"]:
+            return Response("Injected IEMCRP dependency failure", status_code=503)
+    return await call_next(request)
 
 # ---------------------------------------------------------------------------
 # DATA MODELS
@@ -178,7 +222,7 @@ def student_login(req: StudentLoginRequest, request: Request) -> Dict[str, Any]:
     try:
         if DB_POOL.injected_db_latency_ms > 0:
             time.sleep(DB_POOL.injected_db_latency_ms / 1000.0)
-        time.sleep(0.015)  # Nominal 15ms auth query
+        _query_sleep(0.015)  # Nominal 15ms auth query
         return {
             "status": "AUTHENTICATED",
             "registration_no": req.registration_no,
@@ -196,7 +240,7 @@ def student_dashboard(reg_no: str = "SU-2024-88492") -> Dict[str, Any]:
     try:
         if DB_POOL.injected_db_latency_ms > 0:
             time.sleep(DB_POOL.injected_db_latency_ms / 1000.0)
-        time.sleep(0.012)
+        _query_sleep(0.012)
         return {
             "registration_no": reg_no,
             "semester": 6,
@@ -225,7 +269,7 @@ def get_exam_questions(subject_code: str = "CS-601") -> Dict[str, Any]:
     try:
         if DB_POOL.injected_db_latency_ms > 0:
             time.sleep(DB_POOL.injected_db_latency_ms / 1000.0)
-        time.sleep(0.020)
+        _query_sleep(0.020)
         return {
             "mode": "TRANSACTIONAL_DYNAMIC",
             "subject": subject_code,
@@ -244,7 +288,7 @@ def exam_autosave(req: ExamSubmitRequest) -> Dict[str, Any]:
     try:
         if DB_POOL.injected_db_latency_ms > 0:
             time.sleep(DB_POOL.injected_db_latency_ms / 1000.0)
-        time.sleep(0.010)
+        _query_sleep(0.010)
         return {"status": "SAVED", "timestamp": datetime.now(timezone.utc).isoformat()}
     finally:
         DB_POOL.release_connection()
@@ -256,7 +300,7 @@ def exam_submit(req: ExamSubmitRequest) -> Dict[str, Any]:
     try:
         if DB_POOL.injected_db_latency_ms > 0:
             time.sleep(DB_POOL.injected_db_latency_ms / 1000.0)
-        time.sleep(0.040)  # Transaction commit takes ~40ms
+        _query_sleep(0.040)  # Transaction commit takes ~40ms
         return {
             "status": "SUBMITTED_AND_LOCKED",
             "submission_id": f"SUB-{random.randint(100000, 999999)}",
@@ -273,7 +317,7 @@ def query_results(reg_no: str = "SU-2024-88492") -> Dict[str, Any]:
         if DB_POOL.injected_db_latency_ms > 0:
             time.sleep(DB_POOL.injected_db_latency_ms / 1000.0)
         # Heavy un-cached multi-table join
-        time.sleep(0.035)
+        _query_sleep(0.035)
         return {
             "registration_no": reg_no,
             "sgpa": 9.42,
@@ -291,7 +335,7 @@ def save_grades(req: GradeUpdateRequest) -> Dict[str, Any]:
     try:
         if DB_POOL.injected_db_latency_ms > 0:
             time.sleep(DB_POOL.injected_db_latency_ms / 1000.0)
-        time.sleep(0.045)
+        _query_sleep(0.045)
         return {"status": "GRADES_SAVED_AND_PUBLISHED", "faculty": req.faculty_id}
     finally:
         DB_POOL.release_connection()
@@ -352,6 +396,17 @@ def execute_iemcrp_action(payload: Dict[str, Any]) -> Dict[str, Any]:
         delta = params.get("replicas_delta", 2)
         IEMCRP_INFRA_STATE["php_workers"] = max(2, IEMCRP_INFRA_STATE["php_workers"] - delta)
         return {"status": "SUCCESS", "action": action, "new_workers": IEMCRP_INFRA_STATE["php_workers"]}
+    elif action == "ENGAGE_CIRCUIT_BREAKER":
+        IEMCRP_INFRA_STATE["circuit_breaker_enabled"] = True
+        return {"status": "SUCCESS", "action": action, "active": True}
+    elif action == "ACTIVATE_RATE_LIMIT":
+        IEMCRP_INFRA_STATE["rate_limit_per_sec"] = float(params.get("rate_limit_per_sec", 20.0))
+        return {"status": "SUCCESS", "action": action, "limit_per_sec": IEMCRP_INFRA_STATE["rate_limit_per_sec"]}
+    elif action == "RESTART_DEGRADED_PODS":
+        IEMCRP_INFRA_STATE["pod_restart_count"] += 1
+        # A rolling restart releases connections held by the failed worker group.
+        DB_POOL.set_fault_pool_exhaustion(False)
+        return {"status": "SUCCESS", "action": action, "restart_count": IEMCRP_INFRA_STATE["pod_restart_count"]}
     elif action == "INJECT_FAULT":
         fault = params.get("fault_type", "")
         if fault == "DB_CONNECTION_EXHAUSTION":

@@ -45,108 +45,32 @@ def client():
 
 
 def test_module7_m2_forecast_explainability_in_html(client):
-    """Verify index.html contains the full tabular forecast and breach banner for M2."""
-    resp = client.get("/", headers={"accept": "text/html"})
-    assert resp.status_code == 200
-    html = resp.text
-
-    assert "M2 FORECAST" in html
-    assert 'id="lrM2_now"' in html
-    assert 'id="lrM2_5m"' in html
-    assert 'id="lrM2_10m"' in html
-    assert 'id="lrM2_15m"' in html
-    assert 'id="lrM2_safe"' in html
-    assert 'id="lrM2_breach"' in html
-
-    # Initial target values
-    assert "12,481" in html
-    assert "13,740" in html
-    assert "14,620" in html
-    assert "15,180" in html
-    assert "13,200" in html
-    assert "BREACH IN ~7 MIN" in html
+    """The model page has live forecast values and an SVG chart."""
+    html = client.get("/website").text
+    for item in ("m2-loaded", "forecast", "forecast-trend", "forecast-chart"):
+        assert f'id="{item}"' in html
+    assert "12,481" not in html
 
 
 def test_module7_m3_anomaly_explainability_in_html(client):
-    """Verify index.html contains score, meter, critical badge, and top contributors for M3."""
-    resp = client.get("/", headers={"accept": "text/html"})
-    assert resp.status_code == 200
-    html = resp.text
-
-    assert "M3 ANOMALY" in html
-    assert 'id="lrM3_score"' in html
-    assert 'id="lrM3_badge"' in html
-    assert 'id="lrM3_meter"' in html
-    assert 'id="lrM3_contributors"' in html
-
-    # Score, meter, and top contributors
-    assert "0.94" in html
-    assert "CRITICAL" in html
-    assert "███████████████████░" in html
-    assert "DB connections" in html
-    assert "Latency" in html
-    assert "Queue depth" in html
+    """The anomaly score has a live readout and trend chart."""
+    html = client.get("/website").text
+    for item in ("m3-loaded", "anomaly", "anomaly-chart"):
+        assert f'id="{item}"' in html
 
 
 def test_module7_m4_root_cause_explainability_in_html(client):
-    """Verify index.html contains dominant cause, breakdown, and causal DAG for M4."""
-    resp = client.get("/", headers={"accept": "text/html"})
-    assert resp.status_code == 200
-    html = resp.text
-
-    assert "M4 ROOT CAUSE" in html
-    assert 'id="lrM4_dom_name"' in html
-    assert 'id="lrM4_db_pct"' in html
-    assert 'id="lrM4_spike_pct"' in html
-    assert 'id="lrM4_net_pct"' in html
-    assert 'id="lrM4_queue_pct"' in html
-    assert 'id="lrM4_path"' in html
-
-    # Percentages
-    assert "DATABASE" in html
-    assert "91.2%" in html
-    assert "TRAFFIC SPIKE" in html
-    assert "4.1%" in html
-    assert "NETWORK" in html
-    assert "2.8%" in html
-    assert "QUEUE" in html
-    assert "1.1%" in html
-
-    # Causal DAG flow
-    assert "Traffic" in html
-    assert "API" in html
-    assert "DB Pool 🔴" in html
-    assert "Query Wait" in html
-    assert "503" in html
+    """Root cause and causal path are rendered from the current cycle."""
+    html = client.get("/website").text
+    for item in ("m4-loaded", "rca", "causal-graph", "causal-svg"):
+        assert f'id="{item}"' in html
 
 
 def test_module7_m5_policy_all_11_actions_in_html(client):
-    """Verify index.html contains all 11 action probabilities in ranked order for M5."""
-    resp = client.get("/", headers={"accept": "text/html"})
-    assert resp.status_code == 200
-    html = resp.text
-
-    assert "M5 POLICY" in html
-    assert 'id="lrM5_action"' in html
-    assert 'id="lrM5_conf"' in html
-    assert 'id="lrM5_actions_list"' in html
-
-    # All 11 discrete actions
-    all_11_actions = [
-        "ENABLE_WAITING_ROOM",
-        "SCALE_OUT_WORKERS",
-        "ACTIVATE_RATE_LIMIT",
-        "INCREASE_DB_POOL",
-        "DIVERT_READS_TO_REPLICA",
-        "DRAIN_REQUEST_QUEUE",
-        "ENGAGE_CIRCUIT_BREAKER",
-        "PURGE_REDIS_CACHE",
-        "RESTART_DEGRADED_PODS",
-        "SCALE_IN_WORKERS",
-        "NO_OP",
-    ]
-    for action in all_11_actions:
-        assert action in html, f"Action {action} missing from M5 ranked probabilities in HTML"
+    """Policy, safety, and action evidence have dedicated live views."""
+    html = client.get("/website").text
+    for item in ("m5-loaded", "neural", "policy-svg", "policy-probabilities", "safety-badge", "action-steps"):
+        assert f'id="{item}"' in html
 
 
 def test_module7_css_explainability_styles(client):

@@ -26,7 +26,7 @@ from portalpulse_sdk.schema import (
 
 
 class NirantarConnector(BasePortalConnector):
-    """Connector adapter for the Nirantar high-concurrency booking platform."""
+    """Connector for the local Nirantar simulator bridge, not the public site."""
 
     def __init__(self) -> None:
         super().__init__(portal_id="nirantar", portal_name="Nirantar National Railway ERP")
@@ -113,12 +113,7 @@ class NirantarConnector(BasePortalConnector):
         }
 
     def get_telemetry(self) -> UniversalTelemetry:
-        """Generate live telemetry sample from Nirantar.
-
-        If live traffic is hitting Nirantar (e.g. Locust benchmark or browser sessions),
-        it reports true empirical measurements from NIRANTAR_SESSION_TRACKER.
-        Otherwise provides calibrated baseline values.
-        """
+        """Return local bridge measurements, or an explicitly idle local baseline."""
         active_sess = NIRANTAR_SESSION_TRACKER.get_active_sessions()
         in_flight = NIRANTAR_SESSION_TRACKER.get_in_flight_requests()
         p50, p95, p99 = NIRANTAR_SESSION_TRACKER.get_latency_percentiles()
@@ -149,7 +144,7 @@ class NirantarConnector(BasePortalConnector):
                 service_instances=NIRANTAR_INFRA_STATE["pods"],
                 network_in_mb=round(live_rps * 0.08, 2),
                 network_out_mb=round(live_rps * 0.18, 2),
-                tags={"env": "live_bridge", "mode": "real_traffic", "tier": "critical"},
+                tags={"env": "local_bridge", "mode": "measured_local_traffic", "tier": "critical", "is_simulated": "true"},
                 active_sessions=active_sess,
                 concurrent_requests=in_flight,
                 p50_latency_ms=p50 or 15.0,
@@ -163,27 +158,27 @@ class NirantarConnector(BasePortalConnector):
             )
 
         if not self.simulation_mode:
-            # Nominal observed idle baseline
+            # No requests were observed on the local bridge; avoid inventing traffic.
             mean_lat = p50 or round(random.uniform(1.2, 2.4), 1)
             return UniversalTelemetry(
                 portal_id=self.portal_id,
                 timestamp=datetime.now(timezone.utc).isoformat(),
-                active_users=1,
-                requests_per_sec=round(random.uniform(0.15, 0.35), 2),
+                active_users=0,
+                requests_per_sec=0.0,
                 cpu_percent=round(random.uniform(2.4, 4.8), 1),
                 ram_percent=round(random.uniform(18.2, 22.4), 1),
                 latency_ms=mean_lat,
-                throughput=0.30,
+                throughput=0.0,
                 error_rate=0.0,
                 http_5xx=0.0,
                 db_latency_ms=round(random.uniform(0.6, 1.4), 1),
                 db_connections=2.0,
                 queue_length=0,
                 service_instances=NIRANTAR_INFRA_STATE["pods"],
-                network_in_mb=0.1,
-                network_out_mb=0.2,
-                tags={"env": "local_production", "mode": "real_baseline", "tier": "critical"},
-                active_sessions=1,
+                network_in_mb=0.0,
+                network_out_mb=0.0,
+                tags={"env": "local_bridge", "mode": "idle_baseline_estimate", "tier": "critical", "is_simulated": "true"},
+                active_sessions=0,
                 concurrent_requests=0,
                 p50_latency_ms=mean_lat,
                 p95_latency_ms=round(mean_lat * 1.8, 1),

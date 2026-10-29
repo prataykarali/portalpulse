@@ -15,6 +15,7 @@ Fulfills PRD-03 & Continuous Control Architecture:
 from __future__ import annotations
 
 import asyncio
+import os
 import collections
 import logging
 import time
@@ -93,10 +94,20 @@ class ContinuousControlLoop:
             return
 
         while self.running:
+            if os.getenv("PORTALPULSE_DEMO_MODE") == "1":
+                from backend.simulation.traffic_controller import TRAFFIC_CONTROLLER
+                if not TRAFFIC_CONTROLLER.is_running or TRAFFIC_CONTROLLER.is_paused:
+                    self.phase = "IDLE"
+                    self.next_cycle = None
+                    await asyncio.sleep(1.0)
+                    continue
             now_dt = datetime.now(timezone.utc)
             self.next_cycle = (now_dt + timedelta(seconds=self.interval_seconds)).isoformat()
             try:
-                self.step()
+                self.step(
+                    portal_id="college_portal" if os.getenv("PORTALPULSE_DEMO_MODE") == "1" else "nirantar",
+                    auto_approve=os.getenv("PORTALPULSE_DEMO_MODE") == "1",
+                )
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -127,6 +138,7 @@ class ContinuousControlLoop:
                 auto_approve=auto_approve,
                 force_bypass_cooldown=force_bypass_cooldown,
             )
+            self._verify_pending_actions(cycle)
 
             self.phase = "RECORD_RESULT"
             self.cycle_id = cycle.cycle_id
@@ -143,6 +155,55 @@ class ContinuousControlLoop:
             self.phase = "ERROR_RECOVERING"
             logger.error(f"[CONTROL_LOOP] Cycle execution failed: {e}", exc_info=True)
             raise
+
+    def _verify_pending_actions(self, current: ControlCycle) -> None:
+        """Check an executed action against the next real M1 request windows."""
+        from backend.streaming.broadcaster import STREAM_BROADCASTER
+
+        for age, prior in enumerate(reversed(self.history), start=1):
+            if age > 2:
+                break
+            if prior.portal_id != current.portal_id or prior.verification_status != "OBSERVING":
+                continue
+            before, after = prior.pre_metrics or {}, current.pre_metrics or {}
+            error_before, error_after = float(before.get("errors", 0)), float(after.get("errors", 0))
+            db_before, db_after = float(before.get("db_connections", 0)), float(after.get("db_connections", 0))
+            p95_before, p95_after = float(before.get("p95_ms", 0)), float(after.get("p95_ms", 0))
+            nonworse_errors = error_after <= error_before + 0.02
+            improved = (
+                error_before >= 0.05 and error_after <= error_before - 0.05
+                or db_before >= 20 and db_after <= db_before - 5 and nonworse_errors
+                or p95_before >= 30 and p95_after <= p95_before * 0.85 and nonworse_errors
+            )
+            if not improved and age < 2:
+                continue
+            prior.post_metrics = dict(after)
+            prior.after_metrics = dict(after)
+            prior.verification_status = "RECOVERY_VERIFIED" if improved else "RECOVERY_FAILED"
+            prior.recovery_state = "STABILIZING" if improved else "DEGRADED"
+            verify_record = prior.models.get("VERIFY")
+            if verify_record:
+                verify_record.output_summary["status"] = prior.verification_status
+                verify_record.output_summary["follow_up_cycle"] = current.cycle_id
+            if improved:
+                STREAM_BROADCASTER.publish_recovery({
+                    "type": "recovery",
+                    "id": f"REC_STABILIZED_{prior.cycle_id}",
+                    "title": "M7 POST-ACTION CHECK PASSED",
+                    "portal_id": prior.portal_id,
+                    "timestamp": current.timestamp,
+                    "is_recovered": True,
+                    "verification_status": "RECOVERY_VERIFIED",
+                    "action": prior.recommended_action,
+                    "pre_p95_ms": p95_before,
+                    "post_p95_ms": p95_after,
+                    "current_result": f"p95 {p95_before:.1f} → {p95_after:.1f} ms; errors {error_before*100:.1f} → {error_after*100:.1f}%",
+                    "what_happened": "The next measured request window improved after the executed action.",
+                    "what_portalpulse_did": f"M7 applied {prior.recommended_action}; M1 verified a later cycle.",
+                    "message": "Measured request outcomes improved in the next control cycle; monitoring continues.",
+                    "cycle_id": prior.cycle_id,
+                    "follow_up_cycle": current.cycle_id,
+                })
 
     def _broadcast_cycle(self, cycle: ControlCycle) -> None:
         """Broadcast real-time control plane events via SSE."""
@@ -278,12 +339,12 @@ class ContinuousControlLoop:
                 r["type"] = "recovery"
                 r["portal_id"] = cycle.portal_id
                 r["cycle_id"] = cycle.cycle_id
-                r["verification_status"] = "RECOVERY_VERIFIED"
-                r["recovery_state"] = "NOMINAL"
+                r["verification_status"] = "METRIC_NORMALIZED"
+                r["recovery_state"] = cycle.recovery_state
                 STREAM_BROADCASTER.publish_recovery(r)
 
             # Fallback warning if health is degraded and no specific spec matched
-            if not new_warns and (cycle.anomaly.get("is_anomaly") or cycle.health_score < 75.0 or cycle.safety_decision == "REJECTED"):
+            if os.getenv("PORTALPULSE_DEMO_MODE") != "1" and not new_warns and (cycle.anomaly.get("is_anomaly") or cycle.health_score < 75.0 or cycle.safety_decision == "REJECTED"):
                 STREAM_BROADCASTER.publish_warning({
                     "type": "warning",
                     "id": "WARN_HEALTH_DEGRADED",
@@ -305,12 +366,14 @@ class ContinuousControlLoop:
                     "current_result": f"Actuation state: {cycle.actuation_status}.",
                 })
 
-            # 9. recovery (if recovery verified or stabilizing)
-            if cycle.verification_status == "RECOVERY_VERIFIED" or cycle.recovery_state in ("STABILIZING", "NOMINAL"):
+            # 9. Report autonomous recovery only when M7 ran and post-action
+            # measurements actually passed verification. Nominal NO_OP cycles
+            # and threshold-only clearances are not M7 recoveries.
+            if cycle.verification_status == "RECOVERY_VERIFIED" and cycle.actuation_status == "EXECUTED" and cycle.post_metrics:
                 STREAM_BROADCASTER.publish_recovery({
                     "type": "recovery",
                     "id": "REC_STABILIZED",
-                    "title": f"RECOVERY: Closed-loop stabilization: {cycle.recovery_state}",
+                    "title": "M7 POST-ACTION CHECK PASSED",
                     "severity": "RECOVERY",
                     "timestamp": cycle.timestamp,
                     "portal_id": cycle.portal_id,
@@ -319,11 +382,11 @@ class ContinuousControlLoop:
                     "verification_status": cycle.verification_status,
                     "pre_p95_ms": cycle.pre_metrics.get("p95_ms", 0) if cycle.pre_metrics else 0,
                     "post_p95_ms": cycle.post_metrics.get("p95_ms", 0) if cycle.post_metrics else 0,
-                    "message": f"Closed-loop stabilization: {cycle.recovery_state}",
-                    "current_result": f"p95 {cycle.pre_metrics.get('p95_ms', 2410)/1000.0:.2f}s → {cycle.post_metrics.get('p95_ms', 1620)/1000.0:.2f}s",
-                    "what_happened": f"System stabilized into {cycle.recovery_state} state.",
-                    "why_it_happened": "Autonomous mitigation executed and verified.",
-                    "what_portalpulse_did": f"M7 executed {cycle.recommended_action}.",
+                    "message": "The post-action sample passed verification; later cycles continue monitoring the injected pressure.",
+                    "current_result": f"p95 {cycle.pre_metrics['p95_ms']/1000.0:.2f}s → {cycle.post_metrics['p95_ms']/1000.0:.2f}s",
+                    "what_happened": "The measured post-action sample passed the verifier for this cycle.",
+                    "why_it_happened": "M7 executed the safety-approved local action and the verifier checked the next sample.",
+                    "what_portalpulse_did": f"M7 executed {cycle.recommended_action}; this cycle passed verification. Ongoing pressure is monitored separately.",
                 })
         except Exception as exc:
             logger.debug(f"[CONTROL_LOOP] Non-blocking SSE broadcast ignored: {exc}")

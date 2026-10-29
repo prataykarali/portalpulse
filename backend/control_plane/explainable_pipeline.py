@@ -11,6 +11,7 @@ Fulfills PRD-03 & Production Closed-Loop Control Architecture:
 from __future__ import annotations
 
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -47,6 +48,30 @@ class ModelExecutionRecord(BaseModel):
     inference_time_ms: float
     model_version: str
     provenance: str = "LIVE_MODEL"
+    executed_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+
+class _StageRecords(dict):
+    """Publish a stage event when an actual execution record is finalized."""
+
+    def __init__(self, cycle_id: str, portal_id: str) -> None:
+        super().__init__()
+        self.cycle_id = cycle_id
+        self.portal_id = portal_id
+
+    def __setitem__(self, key: str, value: ModelExecutionRecord) -> None:
+        super().__setitem__(key, value)
+        from backend.streaming.broadcaster import STREAM_BROADCASTER
+        STREAM_BROADCASTER.publish("pipeline_stage", {
+            "cycle_id": self.cycle_id,
+            "portal_id": self.portal_id,
+            "stage": key,
+            "timestamp": value.executed_at,
+            "status": value.status,
+            "duration_ms": value.inference_time_ms,
+            "input_summary": value.input_summary,
+            "output_summary": value.output_summary,
+        })
 
 
 class ControlCycle(BaseModel):
@@ -128,7 +153,7 @@ class ExplainablePipelineEngine:
         self.cycle_counter += 1
         cycle_num = self.cycle_counter
         cycle_id = f"cycle_{cycle_num:04d}_{int(time.time() * 1000)}"
-        models: Dict[str, ModelExecutionRecord] = {}
+        models: Dict[str, ModelExecutionRecord] = _StageRecords(cycle_id, portal_id)
         cycle_degraded = False
 
         adapter = get_portal_adapter(portal_id)
@@ -466,6 +491,7 @@ class ExplainablePipelineEngine:
             )
             m5_out = {
                 "selected_action": action_str,
+                "input_feature_vector": ACTION_ENGINE.extract_state_vector(raw, derived, forecast, rca)[0].tolist(),
                 "all_action_probabilities": action_rec.all_action_probabilities,
                 "confidence": action_rec.confidence,
                 "tactical_rationale": action_rec.tactical_rationale,
@@ -520,6 +546,20 @@ class ExplainablePipelineEngine:
         # M6: SAFETY_GUARDRAILS (Deterministic Validation & HITL Gate)
         # -------------------------------------------------------------
         t0_m6 = time.perf_counter()
+        masked_action = None
+        from backend.control_plane.action_masker import ActionMasker
+        from backend.control_plane.registry import PORTAL_REGISTRY
+        capabilities = PORTAL_REGISTRY.get_capabilities(portal_id)
+        if capabilities is None and portal_id == "college_portal":
+            from backend.connectors.college_portal import CollegePortalConnector
+            capabilities = CollegePortalConnector().get_capabilities()
+        elif capabilities is None and portal_id == "nirantar":
+            from backend.connectors.nirantar import NirantarConnector
+            capabilities = NirantarConnector().get_capabilities()
+        if capabilities is not None:
+            masked_action = ActionMasker.apply_mask(portal_id, action_rec.all_action_probabilities, capabilities)
+            action_enum = SREAction(masked_action.effective_action)
+            action_str = action_enum.value
         rec_params: Dict[str, Any] = {}
         if action_enum == SREAction.ENABLE_WAITING_ROOM:
             rec_params = {"capacity": 1500, "max_admitted_sessions": 1500}
@@ -528,7 +568,7 @@ class ExplainablePipelineEngine:
         elif action_enum == SREAction.SCALE_IN_WORKERS:
             rec_params = {"replicas_delta": 2, "replicas": 2}
         elif action_enum == SREAction.ACTIVATE_RATE_LIMIT:
-            rec_params = {"rate_limit_rps": 2000.0}
+            rec_params = {"rate_limit_per_sec": max(20.0, round(raw.requests_per_sec * 0.8, 1))}
 
         intent = ActionIntent(
             action=action_enum,
@@ -542,6 +582,18 @@ class ExplainablePipelineEngine:
             current_replicas=raw.service_instances,
             force_bypass_cooldown=force_bypass_cooldown,
         )
+        if (
+            os.getenv("PORTALPULSE_DEMO_MODE") == "1"
+            and action_enum == SREAction.ENGAGE_CIRCUIT_BREAKER
+            and raw.error_rate >= 0.2
+            and raw.http_5xx < 5.0
+        ):
+            # A 429-dominant ingress bottleneck is not a failing dependency.
+            # Tripping the breaker here would replace 429s with 503s.
+            safety_val.is_safe = False
+            safety_val.rejection_reasons.append(
+                "Observed failures are predominantly HTTP 4xx; a dependency circuit breaker would worsen availability."
+            )
         m6_dur = round((time.perf_counter() - t0_m6) * 1000.0, 3)
 
         # Evaluate model consensus and safety gates
@@ -555,6 +607,14 @@ class ExplainablePipelineEngine:
             safety_decision = "NO_ACTION_REQUIRED"
             hitl_required = False
             consensus_state = "NOMINAL"
+        elif not safety_val.is_safe:
+            safety_decision = "REJECTED"
+            hitl_required = False
+            consensus_state = "DIVERGENT_DISAGREEMENT"
+            TIMELINE_MANAGER.record_event(
+                "M6_SAFETY", portal_id,
+                f"Safety Gate Rejected {action_str}: {'; '.join(safety_val.rejection_reasons)}", "ERROR",
+            )
         elif (
             has_disagreement
             or safety_val.requires_human_approval
@@ -587,10 +647,8 @@ class ExplainablePipelineEngine:
             hitl_required = False
             consensus_state = "DIVERGENT_DISAGREEMENT"
             TIMELINE_MANAGER.record_event(
-                "M6_SAFETY",
-                portal_id,
-                f"Safety Gate Rejected {action_str}: {'; '.join(safety_val.rejection_reasons)}",
-                "ERROR",
+                "M6_SAFETY", portal_id,
+                f"Safety Gate Rejected {action_str}: {'; '.join(safety_val.rejection_reasons)}", "ERROR",
             )
         else:
             safety_decision = "APPROVED"
@@ -605,6 +663,7 @@ class ExplainablePipelineEngine:
 
         m6_out = {
             "decision": safety_decision,
+            "capability_mask": masked_action.model_dump() if masked_action else None,
             "is_safe": safety_val.is_safe,
             "requires_human_approval": hitl_required,
             "rejection_reasons": safety_val.rejection_reasons,
@@ -667,24 +726,40 @@ class ExplainablePipelineEngine:
                 bypass_safety=True,  # Deterministically pre-validated in M6
             )
             act_record: ActuationRecord = CLOSED_LOOP_ACTUATOR.execute_action(act_req)
-            adapter.execute_action(action_str, rec_params)
+            portal_action_result = adapter.execute_action(action_str, rec_params)
             m7_dur = round((time.perf_counter() - t0_m7) * 1000.0, 3)
-            actuation_status = "EXECUTED"
-            recovery_state = "STABILIZING"
+            demo_mode = os.getenv("PORTALPULSE_DEMO_MODE") == "1"
+            actuation_status = "EXECUTED" if (act_record.status == "SUCCESS" and portal_action_result.status == "SUCCESS") else "FAILED"
+            recovery_state = "STABILIZING" if actuation_status == "EXECUTED" else "DEGRADED"
 
             actuation_record_dict = (
                 act_record.model_dump()
                 if hasattr(act_record, "model_dump")
                 else act_record.dict()
             )
+            actuation_record_dict["portal_status"] = portal_action_result.status
             metric_deltas = [
                 (d.model_dump() if hasattr(d, "model_dump") else d.dict())
                 for d in act_record.metric_deltas
             ]
             stabilization_trajectory = act_record.stabilization_trajectory
 
-            # Read latest post-action telemetry ingested back into COLLECTOR by the actuator
-            post_raw = COLLECTOR.get_latest_telemetry() or raw
+            # Verify against the portal adapter after actuation, not the actuator's
+            # synthetic trajectory stored in the generic collector.
+            if demo_mode:
+                post_tel = adapter.get_telemetry()
+                post_raw = raw.model_copy(update={
+                    "response_time": post_tel.p95_latency_ms or post_tel.latency_ms,
+                    "error_rate": post_tel.error_rate,
+                    "cpu_percent": post_tel.cpu_percent,
+                    "ram_percent": post_tel.ram_percent,
+                    "requests_per_sec": post_tel.requests_per_sec,
+                    "db_connections": post_tel.db_connections,
+                    "queue_length": post_tel.queue_length,
+                    "service_instances": post_tel.service_instances,
+                })
+            else:
+                post_raw = COLLECTOR.get_latest_telemetry() or raw
             after_metrics = {
                 "p95_ms": post_raw.response_time,
                 "cpu": post_raw.cpu_percent,
@@ -699,10 +774,11 @@ class ExplainablePipelineEngine:
             models["M7"] = ModelExecutionRecord(
                 model_id="M7",
                 name=f"Physical Actuator ({adapter.get_actuator_environment()})",
-                status="COMPLETE",
+                status="COMPLETE" if actuation_status == "EXECUTED" else "FAILED",
                 input_summary={"action": action_str, "parameters": rec_params},
                 output_summary={
-                    "result": act_record.status,
+                    "result": actuation_status,
+                    "portal_status": portal_action_result.status,
                     "execution_id": act_record.execution_id,
                     "notes": act_record.notes,
                 },
@@ -714,71 +790,32 @@ class ExplainablePipelineEngine:
             TIMELINE_MANAGER.record_event(
                 "M7_ACTUATE",
                 portal_id,
-                f"M7 executed {action_str} via {adapter.get_actuator_environment()}",
-                "ACTION",
+                f"M7 {actuation_status.lower()} {action_str} via {adapter.get_actuator_environment()}",
+                "ACTION" if actuation_status == "EXECUTED" else "WARNING",
             )
 
-            # Verification of operational recovery
-            is_effective = (
-                post_raw.response_time <= raw.response_time
-                and post_raw.error_rate <= raw.error_rate
+            # An immediate sample can still contain pre-action requests. A later
+            # control cycle must verify recovery against fresh M1 telemetry.
+            verif_status = "OBSERVING" if actuation_status == "EXECUTED" else "ACTUATION_FAILED"
+            recovery_score = None
+            recovery_state = "STABILIZING" if actuation_status == "EXECUTED" else "DEGRADED"
+            TIMELINE_MANAGER.record_event(
+                "VERIFY",
+                portal_id,
+                "Awaiting the next measured request window to verify recovery" if actuation_status == "EXECUTED" else "Portal action failed",
+                "INFO",
             )
-            if is_effective:
-                verif_status = "RECOVERY_VERIFIED"
-                recovery_score = 95.0
-                recovery_state = "STABILIZING"
-                TIMELINE_MANAGER.record_event(
-                    "VERIFY",
-                    portal_id,
-                    f"✓ RECOVERY VERIFIED: P95 improved from {raw.response_time}ms to {post_raw.response_time}ms",
-                    "SUCCESS",
-                )
-                models["VERIFY"] = ModelExecutionRecord(
-                    model_id="VERIFY",
-                    name="Closed-Loop Verification Engine",
-                    status="COMPLETE",
-                    input_summary={
-                        "pre_latency_p95": raw.response_time,
-                        "post_latency_p95": post_raw.response_time,
-                    },
-                    output_summary={
-                        "status": "RECOVERY_VERIFIED",
-                        "recovery_score": 95.0,
-                    },
-                    confidence_pct=98.5,
-                    inference_time_ms=2.1,
-                    model_version="verifier-v2.0",
-                    provenance="LIVE_MODEL",
-                )
-            else:
-                verif_status = "ROLLBACK_VERIFIED"
-                actuation_status = "ROLLED_BACK"
-                recovery_score = 65.0
-                recovery_state = "DEGRADED"
-                adapter.rollback_action(action_str, {})
-                TIMELINE_MANAGER.record_event(
-                    "ROLLBACK",
-                    portal_id,
-                    "✓ ROLLBACK VERIFIED: Restored previous operational baseline",
-                    "INFO",
-                )
-                models["VERIFY"] = ModelExecutionRecord(
-                    model_id="VERIFY",
-                    name="Closed-Loop Verification Engine",
-                    status="COMPLETE",
-                    input_summary={
-                        "pre_latency_p95": raw.response_time,
-                        "post_latency_p95": post_raw.response_time,
-                    },
-                    output_summary={
-                        "status": "ROLLBACK_VERIFIED",
-                        "rollback_result": "SUCCESS",
-                    },
-                    confidence_pct=95.0,
-                    inference_time_ms=3.4,
-                    model_version="verifier-v2.0",
-                    provenance="LIVE_MODEL",
-                )
+            models["VERIFY"] = ModelExecutionRecord(
+                model_id="VERIFY",
+                name="Closed-Loop Verification Engine",
+                status="COMPLETE",
+                input_summary={"pre_latency_p95": raw.response_time},
+                output_summary={"status": verif_status, "rollback_result": "NOT_ATTEMPTED"},
+                confidence_pct=95.0,
+                inference_time_ms=3.4,
+                model_version="verifier-v2.0",
+                provenance="LIVE_MODEL",
+            )
         else:
             models["M7"] = ModelExecutionRecord(
                 model_id="M7",

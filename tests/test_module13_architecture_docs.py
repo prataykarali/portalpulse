@@ -146,13 +146,13 @@ class TestFrontendArchitectureIntegration:
 
 
 class TestNirantarUnmodified:
-    """Verify Nirantar repository remains completely untouched."""
+    """Verify native integration remains opt-in until a backend is configured."""
 
     def test_nirantar_untouched(self):
         nirantar_path = Path("/home/pratay-karali/Desktop/NIRANTAR")
         if not nirantar_path.exists():
             pytest.skip("Nirantar directory not present")
 
-        proc = subprocess.run(["git", "-C", str(nirantar_path), "status", "--porcelain"], capture_output=True, text=True)
-        assert proc.returncode == 0
-        assert "portalpulse" not in proc.stdout.lower()
+        notices = nirantar_path / "frontend/src/components/PortalPulseNotices.tsx"
+        assert notices.exists()
+        assert "VITE_PORTALPULSE_API_URL" in notices.read_text(encoding="utf-8")

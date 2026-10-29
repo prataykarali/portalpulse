@@ -90,8 +90,8 @@ WARNING_SPECS: Dict[str, Dict[str, Any]] = {
     "WARN_DB_POOL_EXHAUSTION": {
         "title": "DATABASE CONNECTION POOL EXHAUSTION",
         "severity": "CRITICAL",
-        "trigger_condition": "db_connections >= 45 (90% of pool limit N=50)",
-        "threshold": "90% (45 / 50 connections)",
+        "trigger_condition": "db_pool_utilization >= 90%",
+        "threshold": "90% DB pool utilization",
         "recommended_action": "INCREASE_DB_POOL",
         "remediation_state": "ACTUATING",
         "recovery_state": "STABILIZED",
@@ -107,8 +107,8 @@ WARNING_SPECS: Dict[str, Dict[str, Any]] = {
     "WARN_WAITING_ROOM_ACTIVE": {
         "title": "VIRTUAL WAITING ROOM ACTIVE",
         "severity": "CRITICAL",
-        "trigger_condition": "queue_depth > 100 or action == ENABLE_WAITING_ROOM",
-        "threshold": "100 queued requests",
+        "trigger_condition": "waiting_room_enabled == true",
+        "threshold": "Waiting room enabled",
         "recommended_action": "ENABLE_WAITING_ROOM",
         "remediation_state": "ADMISSION_THROTTLED",
         "recovery_state": "DRAINING",
@@ -124,8 +124,8 @@ WARNING_SPECS: Dict[str, Dict[str, Any]] = {
     "WARN_HTTP_429_RATE_LIMITING": {
         "title": "HTTP 429 RATE LIMITING",
         "severity": "WARNING",
-        "trigger_condition": "http_4xx > 35 or rate_limited_rps > 20",
-        "threshold": "20 req/s (2.0% threshold)",
+        "trigger_condition": "observed HTTP 429 responses > 0",
+        "threshold": "One HTTP 429 response",
         "recommended_action": "ACTIVATE_RATE_LIMIT",
         "remediation_state": "RATE_LIMITED",
         "recovery_state": "NORMAL",
@@ -141,7 +141,7 @@ WARNING_SPECS: Dict[str, Dict[str, Any]] = {
     "WARN_GATEWAY_TIMEOUT_FAILOVER": {
         "title": "GATEWAY TIMEOUT / REPLICA FAILOVER",
         "severity": "CRITICAL",
-        "trigger_condition": "p99_latency > 3.0s or http_5xx > 200",
+        "trigger_condition": "observed HTTP 504 or p99 > 3.0s",
         "threshold": "3.00s p99 latency",
         "recommended_action": "DIVERT_READS_TO_REPLICA",
         "remediation_state": "FAILOVER_ACTIVE",
@@ -158,8 +158,8 @@ WARNING_SPECS: Dict[str, Dict[str, Any]] = {
     "WARN_CIRCUIT_BREAKER_TRIPPED": {
         "title": "CIRCUIT BREAKER TRIPPED",
         "severity": "CRITICAL",
-        "trigger_condition": "error_rate > 5.0%",
-        "threshold": "5.0% error rate",
+        "trigger_condition": "circuit_breaker_enabled == true",
+        "threshold": "Circuit breaker enabled",
         "recommended_action": "ENGAGE_CIRCUIT_BREAKER",
         "remediation_state": "CIRCUIT_OPEN",
         "recovery_state": "HALF_OPEN",
@@ -196,24 +196,31 @@ class WarningEngine:
         rca = cycle.rca or {}
         action_rec = cycle.action_recommendation or {}
 
-        vus = pre.get("virtual_users", 0)
-        db_conns = pre.get("db_connections", 0)
-        queue_len = pre.get("queue_length", 0)
-        error_rate = pre.get("error_rate", 0.0)
-        p99 = pre.get("p99_latency_ms", pre.get("latency_ms", 0.0) * 1.5) / 1000.0
-        http_4xx = int(pre.get("requests_per_sec", 0) * (pre.get("error_4xx_rate", 0.01)))
-        http_5xx = int(pre.get("requests_per_sec", 0) * (error_rate / 100.0))
-        cap_pressure = forecast.get("capacity_pressure_index", 0.0)
-        action_name = cycle.recommended_action or ""
-
-        # Condition checks
+        # Evaluate only observed simulator/control-plane state. IEMCRP reports DB
+        # connections as utilization percent, while Nirantar may report counts.
+        from backend.simulation.traffic_controller import TRAFFIC_CONTROLLER
+        from backend.portals.iemcrp_app import IEMCRP_INFRA_STATE
+        traffic = TRAFFIC_CONTROLLER.get_status()
+        portal_id = getattr(cycle, "portal_id", "nirantar")
+        recent = TRAFFIC_CONTROLLER.get_recent_transactions(200) if portal_id == "college_portal" and traffic.is_running else []
+        hits_429 = sum(t.status == 429 for t in recent)
+        hits_504 = sum(t.status == 504 for t in recent)
+        hits_5xx = sum(t.status >= 500 for t in recent)
+        vus = traffic.current_vus if portal_id == "college_portal" and traffic.is_running else 0
+        db_raw = float(pre.get("db_connections", 0))
+        db_pct = db_raw if portal_id == "college_portal" else db_raw * 2.0
+        queue_len = int(pre.get("queue_length", 0))
+        p99_ms = float(traffic.p99 if portal_id == "college_portal" else pre.get("p95_ms", 0) * 1.5)
+        cap_pressure = float(forecast.get("capacity_pressure_index", 0))
+        waiting_room = portal_id == "college_portal" and bool(IEMCRP_INFRA_STATE.get("waiting_room_enabled"))
+        breaker = portal_id == "college_portal" and bool(IEMCRP_INFRA_STATE.get("circuit_breaker_enabled"))
         evaluations = {
-            "WARN_RESULT_DAY_RUSH": (vus > 8000 or cap_pressure > 0.75, f"{vus:,} VUs"),
-            "WARN_DB_POOL_EXHAUSTION": (db_conns >= 45, f"{db_conns}/50 connections ({int(db_conns/50*100)}%)"),
-            "WARN_WAITING_ROOM_ACTIVE": (queue_len > 100 or "WAITING_ROOM" in action_name, f"{queue_len} queued requests"),
-            "WARN_HTTP_429_RATE_LIMITING": (http_4xx > 35, f"{http_4xx} req/s throttled (4xx)"),
-            "WARN_GATEWAY_TIMEOUT_FAILOVER": (p99 > 3.0 or http_5xx > 200, f"{p99:.2f}s p99 · {http_5xx} 5xx errors"),
-            "WARN_CIRCUIT_BREAKER_TRIPPED": (error_rate > 5.0, f"{error_rate:.1f}% error rate"),
+            "WARN_RESULT_DAY_RUSH": (vus > 8000 or cap_pressure > 0.75, f"{vus:,} scenario VUs; capacity pressure {cap_pressure:.2f}"),
+            "WARN_DB_POOL_EXHAUSTION": (db_pct >= 90, f"{db_pct:.1f}% DB pool utilization ({db_raw:g} reported)"),
+            "WARN_WAITING_ROOM_ACTIVE": (waiting_room, f"waiting room enabled; {queue_len} queued"),
+            "WARN_HTTP_429_RATE_LIMITING": (hits_429 > 0, f"{hits_429} observed HTTP 429 responses"),
+            "WARN_GATEWAY_TIMEOUT_FAILOVER": (hits_504 > 0 or p99_ms > 3000, f"{hits_504} observed HTTP 504; p99 {p99_ms:.0f}ms"),
+            "WARN_CIRCUIT_BREAKER_TRIPPED": (breaker, f"circuit breaker enabled; {hits_5xx} observed HTTP 5xx"),
         }
 
         for w_id, (is_active, metric_str) in evaluations.items():
@@ -228,17 +235,25 @@ class WarningEngine:
                         timestamp=now_ts,
                         current_metric=metric_str,
                         threshold=spec["threshold"],
-                        recommended_action=spec["recommended_action"],
-                        remediation_state=spec["remediation_state"],
+                        recommended_action=cycle.recommended_action,
+                        remediation_state=cycle.actuation_status,
                         recovery_state=spec["recovery_state"],
-                        what_happened=spec["what_happened"],
-                        why_it_happened=spec["why_it_happened"],
-                        what_portalpulse_did=spec["what_portalpulse_did"],
-                        current_result=spec["current_result"],
-                        m4_rca=spec["m4_rca"],
-                        m5_action=spec["m5_action"],
-                        m6_safety=spec["m6_safety"],
-                        m7_actuating=spec["m7_actuating"],
+                        what_happened=f"Observed {metric_str} during control cycle {getattr(cycle, "cycle_id", "unknown")}.",
+                        why_it_happened=f"Model RCA: {rca.get('rca_class', 'unknown')} (confidence {rca.get('confidence', 0):.2f}).",
+                        what_portalpulse_did=(
+                            f"M5 selected {cycle.recommended_action}; M6 approved; M7 applied the action."
+                            if cycle.actuation_status == "EXECUTED"
+                            else f"M5 selected {cycle.recommended_action}; M6 held the change; M7 made no portal change."
+                            if getattr(cycle, "safety_decision", "") == "REJECTED"
+                            else f"M5 selected {cycle.recommended_action}; M6 found no action required; M7 continued monitoring."
+                            if getattr(cycle, "safety_decision", "") == "NO_ACTION_REQUIRED"
+                            else f"M5 selected {cycle.recommended_action}; M6 {getattr(cycle, 'safety_decision', 'unknown')}; M7 {cycle.actuation_status}."
+                        ),
+                        current_result=f"Recovery {cycle.recovery_state}; verification {getattr(cycle, "verification_status", "unknown")}.",
+                        m4_rca=str(rca.get("rca_class", "UNKNOWN")),
+                        m5_action=cycle.recommended_action,
+                        m6_safety=str(getattr(cycle, "safety_decision", "UNKNOWN")),
+                        m7_actuating=cycle.actuation_status,
                     )
                     self._active_warnings[w_id] = item
                     self._history.append(item)
@@ -248,19 +263,23 @@ class WarningEngine:
                     old_item = self._active_warnings.pop(w_id)
                     rec = {
                         "id": w_id,
-                        "title": f"RECOVERY: {spec['title']}",
+                        "title": f"CONDITION CLEARED: {spec['title']}",
                         "severity": "RECOVERY",
                         "timestamp": now_ts,
                         "trigger_condition": spec["trigger_condition"],
                         "current_metric": metric_str,
                         "previous_metric": old_item.current_metric,
                         "threshold": spec["threshold"],
-                        "recommended_action": spec["recommended_action"],
-                        "remediation_state": "RESOLVED",
+                        "recommended_action": cycle.recommended_action,
+                        "remediation_state": "OBSERVED_CLEAR",
                         "recovery_state": "NORMAL",
                         "what_happened": f"Bottleneck cleared. {spec['title']} returned to nominal thresholds.",
-                        "why_it_happened": f"Closed-loop actuation successfully relieved system stress.",
-                        "what_portalpulse_did": f"M7 actuation stabilized telemetry.",
+                        "why_it_happened": "The observed trigger condition cleared in this control cycle.",
+                        "what_portalpulse_did": (
+                            f"M7 applied {cycle.recommended_action}; verification {cycle.verification_status}."
+                            if cycle.actuation_status == "EXECUTED"
+                            else "PortalPulse observed the condition returning below its threshold; no M7 action is attributed to this clearance."
+                        ),
                         "current_result": f"Stabilized ({old_item.current_metric} → {metric_str})",
                         "is_recovered": True,
                     }
@@ -303,6 +322,10 @@ class WarningEngine:
 
     def get_active_warnings(self) -> List[Dict[str, Any]]:
         return [item.to_dict() for item in self._active_warnings.values()]
+
+    def reset(self) -> None:
+        self._active_warnings.clear()
+        self._history.clear()
 
     def get_catalog(self) -> Dict[str, Dict[str, Any]]:
         return WARNING_SPECS

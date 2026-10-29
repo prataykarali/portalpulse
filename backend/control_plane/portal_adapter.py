@@ -174,9 +174,9 @@ class NirantarAdapter(PortalAdapter):
             network_in_mb=round(rps * 0.002, 3),
             network_out_mb=round(rps * 0.008, 3),
             tags={
-                "provenance": "LIVE_PORTAL",
+                "provenance": "LOCAL_NIRANTAR_BRIDGE",
                 "actuator_env": self.get_actuator_environment(),
-                "is_simulated": "false",
+                "is_simulated": "true",
             },
             active_sessions=active_u,
             concurrent_requests=int(max(1, rps)),
@@ -227,7 +227,7 @@ class NirantarAdapter(PortalAdapter):
             command=action,
             status=status,
             execution_time_ms=round(elapsed_ms, 2),
-            message=f"Nirantar {action} executed via {self.get_actuator_environment()}",
+            message=f"{action} executed on the local Nirantar bridge ({self.get_actuator_environment()})",
             rollback_available=True,
             rollback_command="ROLLBACK",
             rollback_parameters=prev_state,
@@ -364,6 +364,27 @@ class IEMCRPAdapter(PortalAdapter):
             base_lat = min(base_lat, 25.0)
             err_rate = 0.0
 
+        # In the local live demo, M1 must see the same HTTP request window as
+        # the Traffic graphs. The former pool-only estimate missed 429/503s.
+        demo_mode = os.getenv("PORTALPULSE_DEMO_MODE") == "1"
+        if demo_mode:
+            from backend.simulation.traffic_controller import TRAFFIC_CONTROLLER
+            traffic = TRAFFIC_CONTROLLER
+            rps = traffic.stats_rps if traffic.is_running else 0.0
+            err_rate = traffic.stats_failure_rate / 100.0 if traffic.is_running else 0.0
+            base_lat = traffic.stats_p50
+            p95_lat = traffic.stats_p95
+            p99_lat = traffic.stats_p99
+            u = traffic._active_worker_count if traffic.is_running else 0
+            recent = list(traffic.transactions)
+            cutoff = datetime.now(timezone.utc).timestamp() - 3.0
+            recent = [x for x in recent if datetime.fromisoformat(x.timestamp).timestamp() >= cutoff]
+            http_5xx = 100.0 * sum(x.status >= 500 for x in recent) / len(recent) if recent else 0.0
+        else:
+            p95_lat = base_lat * 1.6
+            p99_lat = base_lat * 2.5
+            http_5xx = err_rate * 100.0
+
         return UniversalTelemetry(
             portal_id=self.portal_id,
             timestamp=datetime.now(timezone.utc).isoformat(),
@@ -372,23 +393,24 @@ class IEMCRPAdapter(PortalAdapter):
             cpu_percent=min(100.0, 8.0 + stats["active_connections"] * 1.6),
             ram_percent=min(100.0, 32.0 + stats["active_connections"] * 0.9),
             latency_ms=round(base_lat, 1),
-            throughput=rps,
+            throughput=round(rps * (1.0 - err_rate), 1),
             error_rate=err_rate,
-            http_5xx=round(err_rate * 100.0, 1),
+            http_5xx=round(http_5xx, 1),
             db_latency_ms=round(base_lat * 0.7, 1),
-            db_connections=stats["utilization_percent"],  # percentage le=100.0
+            db_connections=stats["recent_peak_utilization_percent"] if demo_mode else stats["utilization_percent"],
             queue_length=stats["waiting_queries"],
             service_instances=IEMCRP_INFRA_STATE["php_workers"],
             tags={
-                "provenance": "LIVE_PORTAL",
+                "provenance": "LIVE_PORTAL_HTTP" if demo_mode else "LIVE_PORTAL",
                 "actuator_env": self.get_actuator_environment(),
                 "is_simulated": "false",
+                "cpu_source": "pool-derived estimate",
             },
             active_sessions=u,
-            concurrent_requests=int(max(1, rps)),
-            p50_latency_ms=round(base_lat * 0.85, 1),
-            p95_latency_ms=round(base_lat * 1.6, 1),
-            p99_latency_ms=round(base_lat * 2.5, 1),
+            concurrent_requests=traffic.in_flight_requests if demo_mode else int(max(1, rps)),
+            p50_latency_ms=round(base_lat, 1) if demo_mode else round(base_lat * 0.85, 1),
+            p95_latency_ms=round(p95_lat, 1),
+            p99_latency_ms=round(p99_lat, 1),
             db_connection_limit=50,
         )
 

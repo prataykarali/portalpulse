@@ -177,3 +177,54 @@ def test_traffic_alias_routes():
         assert res_status.status_code == 200
         res_tx = client.get("/traffic/transactions?limit=5")
         assert res_tx.status_code == 200
+
+
+def test_hot_laptop_cannot_start_local_demo(monkeypatch):
+    from fastapi import HTTPException
+    import backend.simulation.traffic_controller as module
+
+    monkeypatch.setenv("PORTALPULSE_DEMO_MODE", "1")
+    monkeypatch.setattr(module, "cpu_package_temperature_c", lambda: 91.0)
+    controller = TrafficController()
+    with pytest.raises(HTTPException, match="CPU package is 91°C"):
+        asyncio.run(controller.start(scenario="IEMCRP_RESULT_DAY_LIVE_DEMO"))
+    assert not controller.is_running
+
+
+def test_public_demo_restart_cooldown_rejects_repeat_start(monkeypatch):
+    from fastapi import HTTPException
+
+    monkeypatch.setenv("PORTALPULSE_DEMO_MODE", "1")
+    monkeypatch.setenv("PORTALPULSE_DEMO_MIN_RESTART_SECONDS", "180")
+    controller = TrafficController()
+    controller.last_started_at = time.monotonic()
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(controller.start(scenario="IEMCRP_RESULT_DAY_LIVE_DEMO"))
+    assert error.value.status_code == 429
+    assert not controller.is_running
+
+
+def test_stop_waits_until_generated_workers_exit(monkeypatch):
+    monkeypatch.setenv("PORTALPULSE_DEMO_MODE", "1")
+
+    async def scenario():
+        controller = TrafficController()
+        exited = asyncio.Event()
+
+        async def worker():
+            try:
+                await asyncio.Future()
+            finally:
+                exited.set()
+
+        task = asyncio.create_task(worker())
+        await asyncio.sleep(0)
+        controller.is_running = True
+        controller._worker_tasks = [task]
+        await controller.stop()
+        assert exited.is_set()
+        assert task.done()
+        assert controller._worker_tasks == []
+        assert controller.stop_reason == "MANUAL_STOP"
+
+    asyncio.run(scenario())
