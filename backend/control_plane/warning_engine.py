@@ -260,6 +260,7 @@ class WarningEngine:
                     )
                     self._active_warnings[active_key] = item
                     self._history.append(item)
+                    self._history = self._history[-500:]
                     new_warnings.append(item)
             else:
                 if active_key in self._active_warnings:
@@ -321,6 +322,7 @@ class WarningEngine:
         )
         self._active_warnings[warning_id] = item
         self._history.append(item)
+        self._history = self._history[-500:]
         return item
 
     def get_active_warnings(self) -> List[Dict[str, Any]]:
