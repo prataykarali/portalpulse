@@ -74,7 +74,7 @@
     if (running && data.phase !== lastPhase) {
       lastPhase = data.phase;
       const notice = phases[data.phase];
-      if (notice) card({kind: ['Recovery check', 'Mitigation window'].includes(data.phase) ? 'recovery' : 'warning', title: notice[0], detail: notice[1], footer: `${Number(data.rps || 0).toFixed(1)} measured req/s · local bridge`, id: `phase:${data.phase}:${Math.floor((data.elapsed_seconds || 0) / 30)}`});
+      if (notice) card({kind: ['Recovery check', 'Mitigation window'].includes(data.phase) || (data.phase === 'Gateway fault' && data.circuit_breaker_active) ? 'recovery' : 'warning', title: data.phase === 'Gateway fault' && data.circuit_breaker_active ? 'Circuit breaker is protecting journeys' : notice[0], detail: data.phase === 'Gateway fault' && data.circuit_breaker_active ? 'The injected gateway fault is still present, but M7 enabled a cached fallback on the local bridge. Watch the measured failure line to see whether protection holds.' : notice[1], footer: `${Number(data.rps || 0).toFixed(1)} measured req/s · local bridge`, id: `phase:${data.phase}:${Math.floor((data.elapsed_seconds || 0) / 30)}`});
     }
     if (wasRunning && !running) card({kind: 'action', source: 'PULSEBOT · MANUAL STOP', title: 'Simulation stopped', detail: 'Local generated requests ended. The deployed Nirantar site remains open and untouched.', footer: data.stop_reason || 'Stopped by operator', id: 'manual-stop'});
   }
@@ -85,6 +85,7 @@
       const response = await fetch('/api/v1/nirantar-simulation/start', {method: 'POST'});
       if (!response.ok) throw Error(`HTTP ${response.status}`);
       seen.delete('manual-stop'); lastPhase = '';
+      $('last-m7-action').textContent = 'None in this run';
       update(await response.json());
       $('stop-linked-demo').focus();
       card({kind: 'action', source: 'PULSEBOT · NIRANTAR SIMULATION', title: 'Simulation is running until you stop it', detail: 'Bounded requests now exercise the local Nirantar bridge. The measured and model graphs update here. Press Enter or Stop to finish.', footer: 'Maximum 4 in-flight requests · 10 requests/s · no story timer'});
@@ -103,7 +104,7 @@
   listen('rca', item => { latestCause = String(item.root_cause || 'Unknown').replaceAll('_', ' '); $('model-cause').textContent = `${latestCause} · ${Math.round(Number(item.confidence || 0) * 100)}% confidence`; });
   listen('action', item => { latestAction = String(item.action || 'NO_OP').replaceAll('_', ' '); plot('confidence', Number(item.confidence || 0) * 100); $('model-action').textContent = `${latestAction} → ${latestSafety || 'checking safety'}`; });
   listen('safety', item => { latestSafety = item.decision || 'Unknown'; $('model-action').textContent = `${latestAction || 'NO OP'} → ${latestSafety}`; });
-  listen('actuation', item => { $('model-action').textContent = `${String(item.action || 'NO_OP').replaceAll('_', ' ')} → ${latestSafety} → ${item.status}`; if (item.status === 'EXECUTED') card({kind: 'action', source: 'PULSEBOT · M7 LOCAL ACTION', title: `PortalPulse applied ${String(item.action).replaceAll('_', ' ')}`, detail: `M6 approved the action and M7 changed the local Nirantar bridge. Cause: ${latestCause || item.why || 'under investigation'}. A later measured cycle will check whether requests improved.`, footer: `Cycle ${item.cycle_id} · deployed Nirantar unchanged`, id: `action:${item.cycle_id}`}); });
+  listen('actuation', item => { $('model-action').textContent = `${String(item.action || 'NO_OP').replaceAll('_', ' ')} → ${latestSafety} → ${item.status}`; if (item.status === 'EXECUTED') { $('last-m7-action').textContent = `${String(item.action).replaceAll('_', ' ')} · ${new Date().toLocaleTimeString()}`; card({kind: 'action', source: 'PULSEBOT · M7 LOCAL ACTION', title: `PortalPulse applied ${String(item.action).replaceAll('_', ' ')}`, detail: `M6 approved the action and M7 changed the local Nirantar bridge. Cause: ${latestCause || item.why || 'under investigation'}. A later measured cycle will check whether requests improved.`, footer: `Cycle ${item.cycle_id} · deployed Nirantar unchanged`, id: `action:${item.cycle_id}`}); } });
   listen('warning', item => card({kind: 'warning', source: 'NIRANTAR BRIDGE · DETECTED', title: item.title || 'Local bridge warning', detail: item.why_it_happened || item.message || 'Measured conditions crossed a threshold.', footer: `Cycle ${item.cycle_id || '—'} · local simulation`, id: `warning:${item.id}:${item.cycle_id}`}));
   listen('recovery', item => card({kind: 'recovery', source: 'NIRANTAR BRIDGE · RECOVERY CHECK', title: item.title || 'Condition easing', detail: item.current_result || item.message || 'The observed trigger has cleared. Monitoring continues.', footer: item.verification_status || 'Metric normalized', id: `recovery:${item.id}:${item.cycle_id}`}));
   stream.onerror = () => { $('bridge-state').textContent = 'Reconnecting to PortalPulse…'; };

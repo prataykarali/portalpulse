@@ -78,6 +78,8 @@ class NirantarSimulation:
             "max_rps": self.MAX_RPS,
             "max_in_flight": self.MAX_IN_FLIGHT,
             "simulated_fault": NIRANTAR_INFRA_STATE["sim_fault"],
+            "circuit_breaker_active": NIRANTAR_INFRA_STATE["circuit_breaker_active"],
+            "reads_diverted_to_replica": NIRANTAR_INFRA_STATE["reads_diverted_to_replica"],
         }
 
     async def start(self) -> dict[str, Any]:
@@ -104,6 +106,7 @@ class NirantarSimulation:
                 pass
         self.running = False
         self.stop_reason = "Stopped by operator"
+        self.phase = "Idle"
         NIRANTAR_INFRA_STATE["sim_fault"] = "NONE"
         NIRANTAR_INFRA_STATE["sim_latency_ms"] = 0
         NIRANTAR_INFRA_STATE.update(self._initial_infra)
