@@ -78,7 +78,7 @@
       state.cycles=[];state.series=[];state.pinnedMitigation=null;state.pinnedVerified=null;sessionStorage.removeItem('portalpulse_demo_evidence');
     }
     for(const cycle of s.history||[]){
-      if(!cycle.cycle_id||(state.runStartedAt&&Date.parse(cycle.timestamp)<state.runStartedAt))continue;
+      if(cycle.portal_id!=='college_portal'||!cycle.cycle_id||(state.runStartedAt&&Date.parse(cycle.timestamp)<state.runStartedAt))continue;
       const existing=state.cycles.findIndex(c=>c.cycle_id===cycle.cycle_id);
       if(existing>=0)state.cycles[existing]=cycle;
       else state.cycles.push(cycle);
@@ -100,7 +100,7 @@
       const history=await api('/api/v1/control-loop/history?limit=100');
       if(!Array.isArray(history))return;
       const seen=new Set(state.cycles.map(c=>c.cycle_id));
-      for(const c of history){if(c.cycle_id&&!seen.has(c.cycle_id)&&(!state.runStartedAt||Date.parse(c.timestamp)>=state.runStartedAt)){state.cycles.push(c);seen.add(c.cycle_id)}}
+      for(const c of history){if(c.portal_id==='college_portal'&&c.cycle_id&&!seen.has(c.cycle_id)&&(!state.runStartedAt||Date.parse(c.timestamp)>=state.runStartedAt)){state.cycles.push(c);seen.add(c.cycle_id)}}
       state.cycles.sort((a,b)=>Date.parse(a.timestamp)-Date.parse(b.timestamp));
       rememberEvidence(state.cycles);
       state.cycles=state.cycles.slice(-90);
@@ -128,7 +128,7 @@
     const latest=freshLatest?(s.latest||{}):{},n=cycles.length;
     $('control-live-state').textContent=s.traffic.is_running?'● LIVE · '+s.traffic.phase.replaceAll('_',' '):'● DEMO STOPPED';
     $('control-chart-count').textContent=`${n} cycles · now ${fmt(cycles.at(-1)?.pre_metrics?.p95_ms,0)} ms / ${fmt(cycles.at(-1)?.pre_metrics?.db_connections,0)}% DB`;
-    $('model-cycle-caption').textContent=latest.cycle_id?`Cycle ${latest.cycle_id.split('_')[1]} · ${new Date(latest.timestamp).toLocaleTimeString()} · ${s.traffic.is_running?'traffic running':'traffic stopped'}`:'Awaiting next control cycle…';
+    $('model-cycle-caption').textContent=latest.cycle_id?`Cycle ${latest.cycle_id.split('_')[1]} · ${new Date(latest.timestamp).toLocaleTimeString()} · ${s.traffic.is_running?'traffic running':'history paused — run a scenario for new points'}`:'No IEMCRP cycles yet · run a scenario for live model graphs';
     const svg=$('control-chart');
     if(!n){svg.innerHTML='<text x="400" y="130" text-anchor="middle" fill="#7385ae" font-size="16">Waiting for measured cycles…</text>';$('control-decision').innerHTML='<div class="control-decision-card"><small>Awaiting cycle</small><strong>Observing the portal</strong><p>The next model cycle will show its recommendation and safety decision here.</p></div>';$('control-outcome').innerHTML='<div class="control-outcome pending">No action in this run yet.</div>';return}
     const L=48,R=750,T=28,B=222;
@@ -235,12 +235,18 @@
     $('forecast-chart').innerHTML=ticks+`<polygon points="${L},${B} ${points} ${R},${B}" fill="#8b5beb" opacity=".13"/><polyline points="${points}" fill="none" stroke="#8053e4" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>${values.map((v,i)=>{const [x,y]=point(v,i);return `<circle cx="${x}" cy="${y}" r="4.5" fill="${i?'#8053e4':'#1b9de5'}" stroke="#fff" stroke-width="2"/><text x="${x}" y="${Math.max(11,y-8)}" text-anchor="middle" fill="#5e4db0" font-size="9" font-weight="800">${fmt(v,0)}</text><text x="${x}" y="126" text-anchor="middle" fill="#687da8" font-size="9">${['Now','+5m','+10m','+15m'][i]}</text>`}).join('')}`;
   }
   function renderAnomalySvg(threshold){
-    const values=state.cycles.slice(-30).map(c=>Number(c.anomaly?.anomaly_score||0));
+    const cycles=state.cycles.slice(-30);
+    const values=cycles.map(c=>Number(c.anomaly?.anomaly_score||0));
+    const latencies=cycles.map(c=>Number(c.pre_metrics?.p95_ms??c.input_telemetry?.response_time??0));
+    if(!cycles.length){$('anomaly-chart').innerHTML='<text x="200" y="70" text-anchor="middle" fill="#7184ad" font-size="12">Run a scenario to collect model cycles</text>';return}
     const L=36,R=380,T=16,B=105,max=1;
-    const points=linePoints(values,L,R,T,B,max);
     const ty=B-Number(threshold||.45)*(B-T);
     const current=values.at(-1);
-    $('anomaly-chart').innerHTML=`<line x1="${L}" y1="${B}" x2="${R}" y2="${B}" stroke="#dfe7f9"/><line x1="${L}" y1="${ty}" x2="${R}" y2="${ty}" stroke="#ed637c" stroke-width="1.5" stroke-dasharray="5 5"/><text x="${L}" y="${Math.max(12,ty-5)}" fill="#cc536a" font-size="9">threshold ${fmt(threshold,2)}</text><text x="2" y="${B}" fill="#7387b1" font-size="9">0</text><text x="2" y="${T+3}" fill="#7387b1" font-size="9">1.0</text>${values.length>1?`<path d="${smoothPath(values.map((v,i)=>[L+i/Math.max(1,values.length-1)*(R-L),B-v*(B-T)]))}" fill="none" stroke="#0eaf9e" stroke-width="3.5" stroke-linecap="round"/>`:''}${values.length?`<circle cx="${values.length>1?R:L}" cy="${B-current*(B-T)}" r="5" fill="${current>=threshold?'#ec6378':'#0eaf9e'}" stroke="#fff" stroke-width="2"/><text x="${R}" y="126" text-anchor="end" fill="#6378a6" font-size="9">${values.length} actual cycles · now ${fmt(current,3)}</text>`:''}`;
+    const minLat=Math.min(...latencies),maxLat=Math.max(...latencies),latPad=Math.max(8,(maxLat-minLat)*.18),latLow=Math.max(0,minLat-latPad),latHigh=maxLat+latPad;
+    const px=i=>L+i/Math.max(1,values.length-1)*(R-L);
+    const py=v=>B-(v-latLow)/Math.max(.001,latHigh-latLow)*(B-T);
+    const latencyLine=latencies.length>1?`<path d="${smoothPath(latencies.map((v,i)=>[px(i),py(v)]))}" fill="none" stroke="#168fe1" stroke-width="2.8" stroke-linecap="round"/>`:'';
+    $('anomaly-chart').innerHTML=`<line x1="${L}" y1="${B}" x2="${R}" y2="${B}" stroke="#dfe7f9"/><line x1="${L}" y1="${ty}" x2="${R}" y2="${ty}" stroke="#ed637c" stroke-width="1.5" stroke-dasharray="5 5"/><text x="${L}" y="${Math.max(12,ty-5)}" fill="#cc536a" font-size="9">threshold ${fmt(threshold,2)}</text><text x="2" y="${B}" fill="#7387b1" font-size="9">0</text><text x="2" y="${T+3}" fill="#7387b1" font-size="9">1.0</text><text x="${R}" y="${T+3}" text-anchor="end" fill="#168fe1" font-size="9">p95 ${fmt(minLat,0)}–${fmt(maxLat,0)} ms · right scale</text>${values.length>1?`<path d="${smoothPath(values.map((v,i)=>[px(i),B-v*(B-T)]))}" fill="none" stroke="#0eaf9e" stroke-width="3.5" stroke-linecap="round"/>`:''}${latencyLine}${values.length?`<circle cx="${values.length>1?R:L}" cy="${B-current*(B-T)}" r="5" fill="${current>=threshold?'#ec6378':'#0eaf9e'}" stroke="#fff" stroke-width="2"/><text x="${R}" y="126" text-anchor="end" fill="#6378a6" font-size="9">${values.length} actual cycles · score ${fmt(current,3)}</text>`:''}`;
   }
   function renderCausalSvg(c,m){
     const positions={client:[48,110],cdn_edge:[145,110],api_gateway:[246,110],worker_backend:[350,110],postgresql_db:[447,58],redis_cache:[447,163]};
@@ -260,7 +266,7 @@
     const links=[];for(let col=0;col<layers.length-1;col++)for(let row=0;row<ys.length;row++)for(const next of [row,Math.min(ys.length-1,row+1)])links.push(`<line x1="${xs[col]+5}" y1="${ys[row]}" x2="${xs[col+1]-5}" y2="${ys[next]}" stroke="#a7b7e5" stroke-width="1" opacity=".55"/>`);
     $('policy-svg').innerHTML=links.join('')+dots.join('')+layers.map((n,i)=>`<text x="${xs[i]}" y="151" text-anchor="middle" fill="#5f70a7" font-size="10" font-weight="800">${esc(n)}</text>`).join('')+`<text x="250" y="175" text-anchor="middle" fill="#654bb9" font-size="12" font-weight="800">${esc((policy.selected_action||'Awaiting action').replaceAll('_',' '))} · ${fmt(Number(policy.confidence||0)*100)}%</text>`;
   }
-  function renderTrend(id, rows, lines, unit=''){
+  function renderTrend(id, rows, lines, unit='', independent=false){
     const svg=$(id),L=48,R=454,T=22,B=113;
     if(!rows.length){svg.innerHTML='<text x="250" y="75" text-anchor="middle" fill="#7184ad" font-size="13">Waiting for actual control cycles…</text>';return}
     const all=lines.flatMap(line=>rows.map(row=>Number(line.value(row))).filter(Number.isFinite));
@@ -268,15 +274,25 @@
     const pad=Math.max(unit==='%'?2:unit==='score'?.025:2,(high-low)*.18);
     low=Math.max(0,low-pad);high=high+pad;if(high<=low)high=low+1;
     const x=i=>L+i/Math.max(1,rows.length-1)*(R-L),y=v=>B-(Number(v)-low)/(high-low)*(B-T);
-    const grid=[0,.5,1].map(q=>`<line x1="${L}" y1="${B-q*(B-T)}" x2="${R}" y2="${B-q*(B-T)}" stroke="#e2eafa" stroke-dasharray="4 5"/><text x="3" y="${B-q*(B-T)+4}" fill="#7085ad" font-size="10">${fmt(low+(high-low)*q,unit==='score'?2:unit==='%'?0:1)}${unit==='%'?'%':''}</text>`).join('');
-    const traces=lines.map(line=>{const pts=rows.map((row,i)=>[x(i),y(line.value(row))]);const dots=rows.map((row,i)=>`<circle cx="${x(i)}" cy="${y(line.value(row))}" r="${i===rows.length-1?4:2.3}" fill="${line.color}" stroke="#fff" stroke-width="1"><title>${esc(row.cycle_id||'Cycle')} · ${esc(line.name)} ${fmt(line.value(row),unit==='score'?3:1)}${unit==='%'?'%':''}${line.detail?' · '+esc(line.detail(row)):''}</title></circle>`).join('');return `<path d="${smoothPath(pts)}" fill="none" stroke="${line.color}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>${dots}`}).join('');
-    svg.innerHTML=grid+traces+`<text x="${L}" y="142" fill="#7085ad" font-size="10">${rows.length} real cycles</text><text x="${R}" y="142" text-anchor="end" fill="#7085ad" font-size="10">latest · auto scale</text>`;
+    const grid=[0,.5,1].map(q=>`<line x1="${L}" y1="${B-q*(B-T)}" x2="${R}" y2="${B-q*(B-T)}" stroke="#e2eafa" stroke-dasharray="4 5"/>${independent?'':`<text x="3" y="${B-q*(B-T)+4}" fill="#7085ad" font-size="10">${fmt(low+(high-low)*q,unit==='score'?2:unit==='%'?0:1)}${unit==='%'?'%':''}</text>`}`).join('');
+    const traces=lines.map((line,lineIndex)=>{
+      const values=rows.map(row=>Number(line.value(row))||0);
+      const min=Math.min(...values),max=Math.max(...values),range=max-min;
+      const linePad=Math.max(line.unit==='ms'?8:line.unit==='%'?1.5:0.5,range*.16);
+      const lineLow=Math.max(0,min-linePad),lineHigh=max+linePad;
+      const lineY=v=>independent?B-(Number(v)-lineLow)/Math.max(.001,lineHigh-lineLow)*(B-T):y(v);
+      const pts=rows.map((row,i)=>[x(i),lineY(values[i])]);
+      const dots=rows.map((row,i)=>`<circle cx="${x(i)}" cy="${lineY(values[i])}" r="${i===rows.length-1?4:2.3}" fill="${line.color}" stroke="#fff" stroke-width="1"><title>${esc(row.cycle_id||'Cycle')} · ${esc(line.name)} ${fmt(values[i],1)}${esc(line.unit||unit)}${line.detail?' · '+esc(line.detail(row)):''}</title></circle>`).join('');
+      const rangeLabel=independent?`<text x="${lineIndex===0?L:R}" y="${12+lineIndex*11}" text-anchor="${lineIndex===0?'start':'end'}" fill="${line.color}" font-size="9" font-weight="800">${esc(line.name)} ${fmt(min,1)}–${fmt(max,1)} ${esc(line.unit||unit)}</text>`:'';
+      return `<path d="${smoothPath(pts)}" fill="none" stroke="${line.color}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>${dots}${rangeLabel}`;
+    }).join('');
+    svg.innerHTML=grid+traces+`<text x="${L}" y="142" fill="#7085ad" font-size="10">${rows.length} real cycles</text><text x="${R}" y="142" text-anchor="end" fill="#7085ad" font-size="10">${independent?'each line has its own scale':'latest · auto scale'}</text>`;
   }
   function renderModelTrends(){
     const rows=state.cycles.slice(-36);
-    renderTrend('forecast-trend',rows,[{name:'Observed requests',color:'#139fdf',value:c=>c.input_telemetry?.requests_per_sec??0},{name:'+5 minute forecast',color:'#8053e4',value:c=>c.forecast?.['5m_forecast']?.requests_per_sec??0}],'req/s');
-    renderTrend('rca-trend',rows,[{name:'Root cause confidence',color:'#ed9b20',value:c=>Number(c.rca?.confidence??0)*100,detail:c=>c.rca?.rca_class||'—'}],'%');
-    renderTrend('policy-trend',rows,[{name:'Selected action confidence',color:'#e451ad',value:c=>Number(c.action_recommendation?.confidence??0)*100,detail:c=>c.action_recommendation?.selected_action||'—'},{name:'NO_OP probability',color:'#8355e6',value:c=>Number(c.action_recommendation?.all_action_probabilities?.NO_OP??0)*100}],'%');
+    renderTrend('forecast-trend',rows,[{name:'M1 observed',color:'#139fdf',unit:'req/s',value:c=>c.input_telemetry?.requests_per_sec??0},{name:'M2 +5m',color:'#8053e4',unit:'req/s',value:c=>c.forecast?.['5m_forecast']?.requests_per_sec??0}],'req/s',true);
+    renderTrend('rca-trend',rows,[{name:'M4 confidence',color:'#ed9b20',unit:'%',value:c=>Number(c.rca?.confidence??0)*100,detail:c=>c.rca?.rca_class||'—'},{name:'Measured DB pool',color:'#168fe1',unit:'%',value:c=>Number(c.pre_metrics?.db_connections??0)}],'%',true);
+    renderTrend('policy-trend',rows,[{name:'M5 confidence',color:'#e451ad',unit:'%',value:c=>Number(c.action_recommendation?.confidence??0)*100,detail:c=>c.action_recommendation?.selected_action||'—'},{name:'M1 p95 latency',color:'#168fe1',unit:'ms',value:c=>Number(c.pre_metrics?.p95_ms??0)}],'%',true);
   }
   function actionMechanism(c){
     const action=c.recommended_action||'NO_OP',before=c.pre_metrics||{},after=c.post_metrics||{};
@@ -350,7 +366,7 @@
   }
   function bars(values){return Object.entries(values).sort((x,y)=>Number(y[1])-Number(x[1])).map(([name,value])=>`<div class="bar"><label><span>${esc(name.replaceAll('_',' '))}</span><b>${fmt(Number(value)*100)}%</b></label><div class="bar-track"><i style="width:${Math.min(100,Math.max(0,Number(value)*100))}%"></i></div></div>`).join('')}
   function renderDecision(s){const c=s.latest||{},m=s.models||{},p=c.action_recommendation||{},mask=c.safety_validation?.capability_mask||{},m7Display=c.actuation_status==='SKIPPED'?(c.safety_decision==='REJECTED'?'HELD BY M6':'NO PORTAL CHANGE'):c.actuation_status||'—';$('policy-cycle').textContent=c.cycle_id||'—';$('safety-badge').textContent=c.safety_decision||'—';$('policy-network').innerHTML=(m.m5_layers||[]).map((n,i)=>`<div class="network-layer">${Array.from({length:Math.min(7,Math.max(3,Math.round(Math.log2(n||1))))},()=>'<i class="node"></i>').join('')}<b>${esc(n)}</b><small>${i===0?'input':i===(m.m5_layers||[]).length-1?'actions':'hidden'}</small></div>${i===(m.m5_layers||[]).length-1?'':'<span class="network-link">→</span>'}`).join('');$('policy-inputs').innerHTML=(m.m5_features||[]).map((name,i)=>`<span>${esc(name.replaceAll('_',' '))} <b>${fmt(p.input_feature_vector?.[i],1)}</b></span>`).join('');$('decision-summary').innerHTML=`<div class="decision-hero"><small>Latest model recommendation</small><strong>${esc(p.selected_action||'Awaiting cycle')}</strong></div>${kv('Raw model confidence',fmt(Number(p.confidence||0)*100)+'%')}${kv('Capability-safe action',mask.effective_action||'—')}${kv('Mask applied',mask.was_masked?'YES':'NO')}${kv('M6 decision',c.safety_decision||'—')}${kv('M7 status',m7Display)}`;$('policy-probabilities').innerHTML=bars(p.all_action_probabilities||{});$('action-steps').innerHTML=[['M5 proposes',p.selected_action,fmt(Number(p.confidence||0)*100)+'% model confidence'],['Capability mask',mask.effective_action,mask.masking_rationale],['M6 guardrail',c.safety_decision,(c.safety_validation?.rejection_reasons||[]).join(' · ')||'Safety decision recorded'],['M7 & verify',m7Display,c.verification_status==='NO_ACTION'?'No post-action check':c.verification_status||'Awaiting outcome']].map(([a,b,d])=>`<div class="action-step"><small>${esc(a)}</small><b>${esc(b)}</b><span>${esc(d)}</span></div>`).join('')}
-  async function loadRecoveryHistory(){try{const history=await api('/api/v1/control-loop/history?limit=100');const matching=history.filter(x=>Date.parse(x.timestamp||0)>=state.runStartedAt&&x.verification_status==='RECOVERY_VERIFIED');if(matching.length){state.lastVerified=matching.at(-1);if(state.snapshot)renderRecovery(state.snapshot)}}catch(e){console.warn('Recovery history unavailable',e)}}
+  async function loadRecoveryHistory(){try{const history=await api('/api/v1/control-loop/history?limit=100');const matching=history.filter(x=>x.portal_id==='college_portal'&&Date.parse(x.timestamp||0)>=state.runStartedAt&&x.verification_status==='RECOVERY_VERIFIED');if(matching.length){state.lastVerified=matching.at(-1);if(state.snapshot)renderRecovery(state.snapshot)}}catch(e){console.warn('Recovery history unavailable',e)}}
   function renderRecovery(s){const acted=(s.history||[]).filter(x=>Date.parse(x.timestamp||0)>=state.runStartedAt&&(x.actuation_status==='EXECUTED'||x.verification_status==='RECOVERY_FAILED')).at(-1);if(acted&&acted.cycle_id!==state.lastActuation?.cycle_id)state.lastActuation=acted;const verified=(s.history||[]).filter(x=>Date.parse(x.timestamp||0)>=state.runStartedAt&&x.verification_status==='RECOVERY_VERIFIED').at(-1);if(verified)state.lastVerified=verified;const proof=state.lastVerified;const proofBefore=proof?.pre_metrics||{},proofAfter=proof?.post_metrics||{};$('verified-proof').innerHTML=proof?`<div class="verified-proof"><span>✓ LATEST VERIFIED CYCLE · ${esc(proof.cycle_id)} · ${esc(new Date(proof.timestamp).toLocaleTimeString())}</span><b>${esc(proof.recommended_action)} executed</b><small>Measured p95 ${fmt(proofBefore.p95_ms)} → ${fmt(proofAfter.p95_ms)} ms · DB pool ${fmt(proofBefore.db_connections)} → ${fmt(proofAfter.db_connections)}%</small></div>`:'<div class="verified-proof pending">Awaiting a verified action in this run.</div>';const c=state.lastVerified||state.lastActuation||s.latest||{},before=c.pre_metrics||{},after=c.post_metrics||{},metrics=[['p95 latency','p95_ms',' ms'],['Error rate','errors','%'],['Queue depth','queue_length',''],['DB pool utilization','db_connections','%'],['Portal throughput','rps',' req/s']];$('recovery-state').textContent=`SHOWN ${c.verification_status||'—'} · LATEST ATTEMPT ${state.lastActuation?.verification_status||'—'}`;$('comparison').innerHTML=`<div class="compare"><div><strong>BEFORE</strong>${metrics.map(([name,key,unit])=>kv(name,before[key]===undefined?'—':fmt(key==='errors'?before[key]*100:before[key])+unit)).join('')}</div><div><strong>ACTION</strong>${kv('M5 recommendation',c.recommended_action)}${kv('M6 safety',c.safety_decision)}${kv('M7 status',c.actuation_status==='SKIPPED'?'NO PORTAL CHANGE':c.actuation_status)}${kv('Verification',c.verification_status)}</div><div><strong>AFTER</strong>${metrics.map(([name,key,unit])=>kv(name,after[key]===undefined?'Not recorded':fmt(key==='errors'?after[key]*100:after[key])+unit)).join('')}</div></div>`}
   function renderWarning(w){
     const node=document.createElement('div'),cleared=w.severity==='RECOVERY';

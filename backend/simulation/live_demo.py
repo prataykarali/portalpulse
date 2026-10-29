@@ -23,6 +23,7 @@ from backend.simulation.traffic_controller import (
     TrafficPhase,
     cpu_package_temperature_c,
 )
+from backend.simulation.nirantar_simulation import NIRANTAR_SIMULATION
 from backend.streaming.broadcaster import STREAM_BROADCASTER
 
 router = APIRouter(prefix="/api/v1/live-demo", tags=["Local live demonstration"])
@@ -36,6 +37,7 @@ def _require_demo() -> None:
 @router.get("/snapshot")
 def snapshot() -> dict[str, Any]:
     _require_demo()
+    college_cycles = [cycle for cycle in CONTROL_LOOP.history if cycle.portal_id == "college_portal"]
     model = ACTION_ENGINE.model
     layers = (
         []
@@ -56,8 +58,8 @@ def snapshot() -> dict[str, Any]:
         "pool": DB_POOL.get_stats(),
         "infrastructure": dict(IEMCRP_INFRA_STATE),
         "loop": CONTROL_LOOP.get_status().model_dump(),
-        "latest": CONTROL_LOOP.history[-1].model_dump() if CONTROL_LOOP.history else None,
-        "history": [x.model_dump() for x in list(CONTROL_LOOP.history)[-10:]],
+        "latest": college_cycles[-1].model_dump() if college_cycles else None,
+        "history": [cycle.model_dump() for cycle in college_cycles[-10:]],
         "models": {
             "m2_loaded": FORECASTER.model is not None,
             "m3_loaded": DETECTOR.is_ready,
@@ -75,6 +77,8 @@ def snapshot() -> dict[str, Any]:
 
 
 async def _start(phase: TrafficPhase = TrafficPhase.BASELINE) -> dict[str, Any]:
+    if NIRANTAR_SIMULATION.running:
+        raise HTTPException(409, "Stop the Nirantar bridge simulation before starting the IEMCRP scenario.")
     if TRAFFIC_CONTROLLER.is_running:
         return {"status": "ALREADY_RUNNING", "phase": TRAFFIC_CONTROLLER.current_phase.value}
     restart_wait = TRAFFIC_CONTROLLER.demo_restart_wait_seconds()
